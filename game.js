@@ -37,7 +37,7 @@ const LEVEL = {
   // spikes: [x, width] on the ground (or [x, width, y] for a custom floor)
   spikes: [
     [300, 24], [720, 16], [1090, 32], [1210, 16], [1420, 24], [1650, 32],
-    [2080, 24], [2200, 16], [2560, 40], [1985, 16, 108],
+    [2080, 24], [2200, 16], [2560, 40],
   ],
   // people: [x, floorY, walkMin, walkMax]
   people: [
@@ -114,12 +114,24 @@ const sfx = {
 let state = 'title'; // title | play | win | gameover
 let boulder, people, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame;
 
+// People never walk onto spikes: trim each walk range at the nearest spike on their floor.
+function walkLimits(x, floorY, min, max) {
+  for (const [sx, sw, sy = GROUND_Y] of LEVEL.spikes) {
+    if (sy !== floorY || sx + sw < min || sx > max) continue;
+    if (sx > x) max = Math.min(max, sx - 5); else min = Math.max(min, sx + sw + 5);
+  }
+  return [min, max];
+}
+
 function resetRun() {
   lives = TUNE.lives; squished = 0; spawnX = 40;
-  people = LEVEL.people.map(([x, fy, min, max]) => ({
-    x, floorY: fy, min, max, dir: Math.random() < 0.5 ? -1 : 1,
-    speed: 0.25 + Math.random() * 0.2, hue: Math.floor(Math.random() * 5), alive: true, scared: false,
-  }));
+  people = LEVEL.people.map(([x, floorY, lo, hi]) => {
+    const [min, max] = walkLimits(x, floorY, lo, hi);
+    return {
+      x, floorY, min, max, dir: Math.random() < 0.5 ? -1 : 1,
+      speed: 0.25 + Math.random() * 0.2, hue: Math.floor(Math.random() * 5), alive: true, scared: false,
+    };
+  });
   decals = [];
   respawn();
 }
@@ -412,4 +424,4 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // Test hook for automated checks (harmless in the browser).
-window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get lives() { return lives; }, input, update };
+window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get lives() { return lives; }, get people() { return people; }, spikes: LEVEL.spikes, input, update };

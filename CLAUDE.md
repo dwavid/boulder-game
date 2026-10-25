@@ -14,6 +14,8 @@ A browser side-scroller: you're a boulder, squish people, avoid spikes. Plain HT
 - Keep it a single `game.js` until it gets painful; then split into plain `<script>` files (no bundler).
 - Game feel numbers live in `TUNE`; level layout lives in `LEVEL`. Prefer editing those over scattering magic numbers.
 - Level design rules learned the hard way: checkpoints must be on solid ground (not over a pit); don't put a platform within ~50px above the ground where a spike jump happens (the boulder bonks its head); don't pack a spike right before a pit.
+- Spikes on a floating platform only make sense if the platform is long enough to jump over them (roughly spike width + 60px of platform on each side). Otherwise leave the platform spike-free.
+- People never walk onto spikes (`walkLimits` trims their walk range), so no extra work is needed when adding spikes.
 - Kid-friendly: squishing is cartoony (stars and confetti, no gore).
 
 ## Running and testing
