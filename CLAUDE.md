@@ -1,6 +1,6 @@
-# Boulder Game
+# BOULD
 
-A browser side-scroller: you're a boulder, squish people, avoid spikes. Plain HTML/Canvas/JS, no build step, no dependencies. The owner "vibe codes" this from phone and desktop, so keep changes small, readable and easy to test.
+A browser side-scroller called BOULD (the name the owner's 4-year-old picked): you're a boulder, squish people, avoid spikes. Plain HTML/Canvas/JS, no build step, no dependencies. The owner "vibe codes" this from phone and desktop, so keep changes small, readable and easy to test.
 
 ## Layout
 - `index.html`: page, canvas, on-screen touch buttons

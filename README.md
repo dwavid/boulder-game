@@ -1,4 +1,4 @@
-# Boulder Game
+# BOULD
 
 You're a boulder. Roll around, run over people, and don't land on spikes.
 

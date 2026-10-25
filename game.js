@@ -1,5 +1,5 @@
 'use strict';
-// Boulder Game — roll around, squish people, avoid spikes.
+// BOULD — roll around, squish people, avoid spikes.
 // Everything is drawn with code (no image files). Logical screen is 320x180,
 // scaled up by CSS with crisp pixels.
 
@@ -1263,7 +1263,7 @@ function draw() {
   const lastLevel = levelIndex === LEVELS.length - 1;
   if (state === 'title') {
     px(40, 52, W - 80, 70, 'rgba(0,0,0,0.55)');
-    text('BOULDER GAME', W / 2, 78, '#ffd23f', 'center', 16);
+    text('BOULD', W / 2, 78, '#ffd23f', 'center', 16);
     text(LEVEL.hint, W / 2, 96, '#fff', 'center');
     text('Arrows/WASD + Space  or  tap buttons', W / 2, 108, '#ccc', 'center');
     text('Press jump to start', W / 2, 118, '#fff', 'center');

@@ -1,4 +1,4 @@
-# Boulder Game — Plan
+# BOULD — Plan
 
 **Concept (from the kid who invented it):** you're a boulder. Roll around, run over people, and don't land on spikes.
 
