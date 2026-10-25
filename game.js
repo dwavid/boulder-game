@@ -69,9 +69,7 @@ const LEVELS = [{
   ],
   // ghosts float back and forth slowly: [centerX, centerY, patrolRange, phase]
   ghosts: [
-    [360, 136, 36, 0], [760, 136, 30, 2], [1060, 136, 36, 4], [1380, 136, 40, 1],
-    [1570, 94, 25, 3], [1850, 136, 26, 5], [2150, 136, 36, 2], [2720, 136, 30, 4],
-    [2900, 136, 36, 1], [3020, 136, 30, 3],
+    [360, 136, 36, 0], [1060, 136, 36, 4], [1570, 94, 25, 3], [2150, 136, 36, 2], [2900, 136, 36, 1],
   ],
   // zombies: [x, floorY, walkMin, walkMax]
   people: [
@@ -476,14 +474,14 @@ function drawPits() {
     const a = ground[i][0] + ground[i][2], w = ground[i + 1][0] - a, sx = Math.round(a - camX);
     if (sx > W || sx + w < 0) continue;
     px(sx, GROUND_Y, w, H - GROUND_Y, night ? '#04020a' : '#24150d');
-    const glow = night ? '110,255,150' : '255,150,60';
-    for (let k = 0; k < 4; k++) px(sx, H - 16 + k * 4, w, 4, `rgba(${glow},${0.1 + k * 0.1})`);
-    // glowing mist hovering over the hole, visible even against the dark sky
-    for (let k = 0; k < 4; k++) px(sx, GROUND_Y - 12 + k * 3, w, 3, `rgba(${glow},${0.05 + k * 0.05})`);
-    // little glowing wisps rising out of the hole
-    for (let k = 0; k < 3; k++) {
-      const wy = H - ((frame * 0.4 + k * 11 + sx) % 30);
-      px(sx + 6 + ((k * 17 + 5) % Math.max(1, w - 12)), wy, 2, 2, `rgba(${glow},0.7)`);
+    if (night) { // spooky green glow, mist and rising wisps (daytime pits are just dirt holes)
+      const glow = '110,255,150';
+      for (let k = 0; k < 4; k++) px(sx, H - 16 + k * 4, w, 4, `rgba(${glow},${0.1 + k * 0.1})`);
+      for (let k = 0; k < 4; k++) px(sx, GROUND_Y - 12 + k * 3, w, 3, `rgba(${glow},${0.05 + k * 0.05})`);
+      for (let k = 0; k < 3; k++) { // rise at a constant speed: depends only on time, not on scrolling
+        const wy = H - ((frame * 0.4 + k * 11 + a) % 30);
+        px(sx + 6 + ((k * 17 + 5) % Math.max(1, w - 12)), wy, 2, 2, `rgba(${glow},0.7)`);
+      }
     }
     // darker walls so the hole has depth
     px(sx, GROUND_Y, 2, H - GROUND_Y, 'rgba(0,0,0,0.5)'); px(sx + w - 2, GROUND_Y, 2, H - GROUND_Y, 'rgba(0,0,0,0.5)');
@@ -555,8 +553,11 @@ function drawGhost(g) {
   ctx.fillStyle = 'rgba(235,245,255,0.92)';
   for (let dy = -6; dy <= 0; dy++) { const half = Math.floor(Math.sqrt(36 - dy * dy + 0.5)); ctx.fillRect(x - half, y + dy, half * 2 + 1, 1); }
   ctx.fillRect(x - 6, y + 1, 13, 5);
-  const wave = Math.floor(frame / 8) % 2; // wavy bottom edge
-  for (let i = 0; i < 13; i += 2) ctx.fillRect(x - 6 + i + wave, y + 6, 2, 2);
+  const wave = Math.floor(frame / 8) % 2; // wavy bottom edge: alternate blocks hang down
+  for (let i = 0; i < 13; i += 2) if ((i / 2 + wave) % 2 === 0) ctx.fillRect(x - 6 + i, y + 6, 2, 2);
+  // wispy tail trailing behind (opposite the way the ghost faces); the tip flutters
+  const tail = (dx, dy, w, h) => ctx.fillRect(face > 0 ? x - dx - w : x + dx, y + dy, w, h);
+  tail(6, 1, 3, 4); tail(9, 3 - wave, 3, 3); tail(12, 4 - wave * 2, 2, 2);
   const eyeH = g.chase ? 4 : 3; // wide eyes and a bigger mouth when chasing
   px(x - 3 + face, y - 2, 2, eyeH, '#1b1f3a'); px(x + 2 + face, y - 2, 2, eyeH, '#1b1f3a'); // eyes
   px(x - 1 + face, y + 2, 2, g.chase ? 3 : 2, '#1b1f3a'); // little "oooh" mouth
