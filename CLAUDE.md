@@ -9,7 +9,7 @@ A browser side-scroller called BOULD (the name the owner's 4-year-old picked): y
 - Hosting: GitHub Pages deploys the repo root from the `main` branch (no workflow file needed)
 
 ## Conventions
-- Logical resolution is 320x180; CSS scales it with `image-rendering: pixelated`. Draw with integer coordinates and the `px()` / `disc()` helpers.
+- Logical resolution is 320x180 in landscape. In portrait on a touch device `layout()` makes `W` about 195 and `H` as tall as fits above the buttons (whole-number CSS scale); the world is drawn bottom-aligned, shifted down by `topPad`, with extra sky above it. Use `WORLD_H` (180) for world-space heights (never `H`), and use `W` rather than 320 for anything screen-width related. The boss camera follows you inside the arena in portrait because the arena doesn't fit on screen. Test both: Playwright with `isMobile: true, hasTouch: true` at 390x844 and 844x390. Original note: CSS scales it with `image-rendering: pixelated`. Draw with integer coordinates and the `px()` / `disc()` helpers.
 - All art is drawn in code. No image files unless the owner asks for them.
 - Keep it a single `game.js` until it gets painful; then split into plain `<script>` files (no bundler).
 - Game feel numbers live in `TUNE`; level layout lives in the `LEVELS` array (`LEVEL` is the current one). Prefer editing those over scattering magic numbers.
