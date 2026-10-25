@@ -5,13 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BOULD</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #14121f; overflow: hidden; touch-action: none; }
+  html, body { margin: 0; height: 100%; height: 100dvh; background: #14121f; overflow: hidden; touch-action: none; }
   html { -webkit-text-size-adjust: 100%; -webkit-touch-callout: none; }
   body { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
   body, button { -webkit-user-select: none; user-select: none; touch-action: none; }
   canvas {
     touch-action: none; -webkit-user-drag: none;
     width: min(100vw, 177.78vh);
+    width: min(100vw, 177.78dvh); /* dvh = the visible height, so the bottom isn't hidden behind Safari's toolbar */
     aspect-ratio: 16 / 9;
     image-rendering: pixelated;
     background: #8fd3ff;
