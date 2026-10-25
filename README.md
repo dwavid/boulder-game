@@ -2,7 +2,7 @@
 
 You're a boulder. Roll around, run over people, and don't land on spikes.
 
-**Controls:** Arrow keys / WASD to roll, Space / Up to jump. On a phone, use the on-screen buttons.
+**Controls:** Arrow keys / WASD to roll, Space / Up to jump, and in the air press Down (or S) to smash. On a phone, use the on-screen buttons (▲ jumps, ▼ smashes).
 
 **Run locally:** `python3 -m http.server 8000` and open http://localhost:8000
 

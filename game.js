@@ -32,6 +32,7 @@ const TUNE = {
   gateWarnAt: 120,
   gateOnAt: 150,
   sweepSpeed: 0.03, // how fast the sweeping lasers bob up and down
+  smashSpeed: 8.5, // how fast the boulder drops when you jump and press down (the "smash")
   bossHeight: 64, // head top is this far above the ground: too high to reach with a jump from the ground
   bossWindup: 50, // frames the sword is raised before it swings (the warning)
   bossSwing: 16, // frames the swing lasts; the low sweep at the end is what hurts
@@ -96,7 +97,15 @@ const LEVELS = [{
   name: 'THE CASTLE', theme: 'castle', kind: 'knight', hint: 'Squish the knights. Dodge the lasers!',
   width: 3400,
   solids: [
-    [0, GROUND_Y, 700, 30], [750, GROUND_Y, 750, 30], [1550, GROUND_Y, 850, 30], [2450, GROUND_Y, 950, 30],
+    [0, GROUND_Y, 700, 30], [750, GROUND_Y, 750, 30], [1550, GROUND_Y, 850, 30],
+    // The arena floor. Under the middle is a secret: a patch of sand you can smash (jump, then press down), then a locked
+    // brick floor, then a chamber with the caged baby rock and a tunnel out. The ground is thick here so there's room underground.
+    [2450, GROUND_Y, 778, 150],                     // ground up to the sand patch (and the chamber's left wall)
+    [3228, GROUND_Y, 56, 16, 'sand'],              // smashable sand on top
+    [3228, 166, 56, 12, 'brick'],                  // locked brick floor under the sand (the key opens it)
+    [3284, GROUND_Y, 116, 62],                     // ground right of the patch (the tunnel's ceiling)
+    [3228, 236, 372, 64],                          // chamber floor, which carries on as the tunnel floor (past the edge of the screen)
+    [3231, 212, 24, 24, 'cage'],                   // the cage holding the baby rock (removed when you unlock it)
     // stone ledges and steps
     [420, 112, 100, 8], [1020, 108, 90, 8], [1830, 108, 110, 8], [2200, 132, 30, 18], [2230, 114, 30, 36],
     // boss arena: a ledge on each side (the boss's head is too high to reach from the ground) and a wall at the end
@@ -117,6 +126,8 @@ const LEVELS = [{
     [2780, GROUND_Y, 2730, 2840], [2990, GROUND_Y, 2950, 3040],
   ],
   checkpoints: [790, 1600, 2490, 3010],
+  // the underground part: camera scrolls down to follow you in; baby rock starts in the cage
+  underground: { x0: 3200, maxCamY: 100, floorY: 236, babyX: 3243, chamberX: 3228, chamberW: 56, tunnelY: 212 },
   // The Giant Knight. The fight starts when you cross arenaLeft; the camera then locks onto the arena.
   // zoneMin/zoneMax is how far he can walk (between the two ledges). No goalX: beating the boss wins the level.
   boss: { name: 'THE GIANT KNIGHT', x: 3254, hp: 3, arenaLeft: 3092, camX: 3080, zoneMin: 3202, zoneMax: 3306 },
@@ -153,14 +164,16 @@ function setLevel(i) { levelIndex = i; LEVEL = LEVELS[i]; }
 }
 
 // ---------- Input ----------
-const input = { left: false, right: false, jump: false, jumpPressed: false };
+const input = { left: false, right: false, jump: false, jumpPressed: false, down: false, downPressed: false };
 const keyMap = {
   ArrowLeft: 'left', a: 'left', A: 'left',
   ArrowRight: 'right', d: 'right', D: 'right',
   ArrowUp: 'jump', w: 'jump', W: 'jump', ' ': 'jump',
+  ArrowDown: 'down', s: 'down', S: 'down',
 };
 function setInput(name, down) {
   if (name === 'jump' && down && !input.jump) input.jumpPressed = true;
+  if (name === 'down' && down && !input.down) input.downPressed = true;
   input[name] = down;
 }
 addEventListener('keydown', (e) => {
@@ -205,7 +218,7 @@ canvas.addEventListener('pointerdown', (e) => {
     if (hudTaps.length >= 3) { menuOpen = true; hudTaps = []; }
     return;
   }
-  if (state !== 'play') input.jumpPressed = true;
+  if (state !== 'play' || ending) input.jumpPressed = true;
 });
 
 // ---------- Sound (tiny synth beeps) ----------
@@ -245,7 +258,7 @@ const SQUISH_COLORS = {
 
 // ---------- Game state ----------
 let state = 'title'; // title | play | win | gameover
-let boulder, people, ghosts, boss, bossIntro = 0, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame = 0, introTimer = 0;
+let boulder, people, ghosts, boss, bossIntro = 0, solids, hasKey, key, ending, baby, camY = 0, shake = 0, lockedHint = 0, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame = 0, introTimer = 0;
 
 // People never walk onto spikes or through lasers: trim each walk range at the nearest one on their floor.
 function walkLimits(x, floorY, min, max) {
@@ -272,6 +285,9 @@ function resetRun() {
   ghosts = LEVEL.ghosts.map(([cx, cy, range, phase]) => ({ cx, cy, range, phase, x: cx, y: cy, face: 1, chase: false }));
   decals = [];
   boss = LEVEL.boss ? { hp: LEVEL.boss.hp, dead: false } : null;
+  solids = LEVEL.solids.map((sd) => sd.slice()); // a copy, because smashing and unlocking remove pieces
+  hasKey = false; key = null; ending = null; camY = 0; shake = 0; lockedHint = 0;
+  baby = LEVEL.underground ? { x: LEVEL.underground.babyX, y: LEVEL.underground.floorY - 6, vx: 0, vy: 0, rot: 0, free: false } : null;
   respawn();
 }
 function respawn() {
@@ -300,6 +316,7 @@ function spawnBurst(x, y, colors, n, power = 1.6) {
 }
 
 function die() {
+  if (ending) return; // nothing can hurt you during the ending
   deadTimer = 70;
   sfx.die();
   spawnBurst(boulder.x, boulder.y, ['#8a8a96', '#b9b9c6', '#5d5d69'], 24, 2.4);
@@ -352,9 +369,19 @@ function hitsCircleRect(cx, cy, r, rx, ry, rw, rh) {
 
 const BOSS_WALL = [3076, 0, 12, GROUND_Y]; // drops behind you when the boss fight starts
 
+// Smashable pieces of level are solids with a 5th entry, 'sand'. Smashing one removes it.
+function smashSolid(sd) {
+  solids = solids.filter((o) => o !== sd);
+  spawnBurst(sd[0] + sd[2] / 2, sd[1] + 2, ['#e3c276', '#f0d890', '#c9a75a', '#ffffff'], 26, 2);
+  spawnBurst(boulder.x, sd[1], ['#e3c276', '#f0d890'], 12, 1.6);
+  shake = 10; beep(120, 0.3, 'sawtooth', 0.07, -70);
+  floaters.push({ x: sd[0] + sd[2] / 2, y: sd[1] - 12, text: 'SMASH!', life: 40 });
+}
+
 function updateBoulder() {
   const b = boulder, r = TUNE.radius, prevBottom = b.y + r;
-  const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const c = ending ? ending.ctrl : input; // during the ending the boulder is moved by the script, not by you
+  const dir = (c.right ? 1 : 0) - (c.left ? 1 : 0);
   const acc = b.onGround ? TUNE.accel : TUNE.airAccel;
   if (dir) { b.vx += dir * acc; b.face = dir; }
   else if (b.onGround) {
@@ -362,27 +389,37 @@ function updateBoulder() {
   }
   b.vx = clamp(b.vx, -TUNE.maxSpeed, TUNE.maxSpeed);
 
-  if (input.jumpPressed) { b.jumpBuf = 6; input.jumpPressed = false; }
+  if (c.jumpPressed) { b.jumpBuf = 6; c.jumpPressed = false; }
+  // Smash: jump, then press down to slam straight down. It breaks sand (and anything else smashable).
+  if (c.downPressed) {
+    c.downPressed = false;
+    if (!b.onGround && !b.smashing) { b.smashing = true; b.vy = TUNE.smashSpeed; b.vx = 0; beep(180, 0.2, 'sawtooth', 0.05, -100); }
+  }
   if (b.jumpBuf > 0 && b.coyote > 0) {
     b.vy = -TUNE.jump; b.coyote = 0; b.jumpBuf = 0; b.onGround = false; sfx.jump();
   }
-  if (!input.jump && b.vy < -2.2) b.vy = -2.2; // release early = short hop
+  if (!c.jump && b.vy < -2.2 && !b.smashing) b.vy = -2.2; // release early = short hop
   b.jumpBuf--;
 
   b.vy += TUNE.gravity;
-  b.vy = Math.min(b.vy, 7);
+  b.vy = Math.min(b.vy, b.smashing ? TUNE.smashSpeed : 7);
   b.x += b.vx; b.y += b.vy;
   b.x = Math.max(r, b.x);
 
   b.onGround = false;
-  const solids = boss && boss.active ? LEVEL.solids.concat([BOSS_WALL]) : LEVEL.solids;
-  for (const [sx, sy, sw, sh] of solids) {
+  const wasSmashing = b.smashing;
+  let onBrick = false;
+  const list = boss && boss.active ? solids.concat([BOSS_WALL]) : solids;
+  for (const sd of list) {
+    const [sx, sy, sw, sh, type] = sd;
     const cx = clamp(b.x, sx, sx + sw), cy = clamp(b.y, sy, sy + sh);
     const dx = b.x - cx, dy = b.y - cy, d2 = dx * dx + dy * dy;
     if (d2 >= r * r) continue;
     let nx, ny, pen;
     if (d2 > 0.0001) { const d = Math.sqrt(d2); nx = dx / d; ny = dy / d; pen = r - d; }
     else { nx = 0; ny = -1; pen = r + (b.y - sy); }
+    if (type === 'sand' && b.smashing && ny < -0.5) { smashSolid(sd); b.vy = Math.min(b.vy, 5); continue; } // smashed!
+    if (type === 'brick' && ny < -0.6) onBrick = true;
     b.x += nx * pen; b.y += ny * pen;
     const vn = b.vx * nx + b.vy * ny;
     if (vn < 0) {
@@ -392,6 +429,14 @@ function updateBoulder() {
     }
     if (ny < -0.6) b.onGround = true;
   }
+  if (b.onGround && wasSmashing) { // landed from a smash: thud and dust
+    b.smashing = false; shake = 8; beep(90, 0.18, 'square', 0.07, -40);
+    spawnBurst(b.x, b.y + r, ['#c9c4d8', '#9a96ae', '#ffffff'], 10, 1.3);
+  }
+  if (onBrick) { // the locked brick floor: the key opens it
+    if (hasKey && !ending) startEnding();
+    else if (!hasKey) lockedHint = 90;
+  }
   b.coyote = b.onGround ? 6 : b.coyote - 1;
   b.age++;
   b.rot += b.vx / r;
@@ -400,7 +445,7 @@ function updateBoulder() {
   if (boss && boss.active && !boss.dead && b.vy > 0) {
     const headTop = GROUND_Y - TUNE.bossHeight;
     if (prevBottom <= headTop + 3 && b.y + r >= headTop && Math.abs(b.x - boss.x) < 22) {
-      b.y = headTop - r - 1; b.vy = -TUNE.jump * 0.85; b.onGround = false; b.coyote = 0;
+      b.y = headTop - r - 1; b.vy = -TUNE.jump * 0.85; b.onGround = false; b.coyote = 0; b.smashing = false;
       if (boss.invul <= 0) hurtBoss();
       else beep(300, 0.1, 'square', 0.04, 200);
     }
@@ -418,7 +463,7 @@ function updateBoulder() {
     if ((b.x - g.x) ** 2 + (b.y - g.y) ** 2 < reach * reach) { die(); return; }
   }
   // pits
-  if (b.y > H + 30) { die(); return; }
+  if (b.y > (LEVEL.underground && b.x > LEVEL.underground.x0 ? 330 : H + 30)) { die(); return; }
 
   // people
   for (const p of people) {
@@ -491,8 +536,11 @@ function hurtBoss() {
 function updateBoss() {
   if (!boss) return;
   const b = boulder, cfg = LEVEL.boss;
-  if (boss.dead) { // celebrate for a moment, then the level is won
-    if (--boss.timer === 0) { state = 'win'; sfx.win(); }
+  if (boss.dead) { // after the explosion, he drops a key
+    if (--boss.timer === 80) {
+      key = { x: boss.x, y: GROUND_Y - TUNE.bossHeight, vy: -2.5, rest: false };
+      floaters.push({ x: boss.x, y: GROUND_Y - 80, text: 'A KEY!', life: 70 });
+    }
     return;
   }
   if (!boss.active) {
@@ -526,6 +574,84 @@ function updateBoss() {
   }
 }
 
+// ----- The key, and the ending -----
+function updateKey() {
+  if (!key || key.taken) return;
+  if (!key.rest) {
+    key.vy += 0.25; key.y += key.vy;
+    if (key.y >= GROUND_Y - 6) { key.y = GROUND_Y - 6; key.vy *= -0.4; if (Math.abs(key.vy) < 0.6) { key.vy = 0; key.rest = true; } }
+  }
+  if (!ending && deadTimer === 0 && Math.hypot(boulder.x - key.x, boulder.y - key.y) < TUNE.radius + 6) {
+    key.taken = true; hasKey = true; sfx.checkpoint();
+    spawnBurst(key.x, key.y, ['#ffd23f', '#fff6b0', '#ffffff'], 16, 1.6);
+    floaters.push({ x: key.x, y: key.y - 14, text: 'GOT THE KEY!', life: 70 });
+  }
+}
+
+// What each speech bubble says, in order. who: 'boulder' or 'baby'.
+const ENDING_LINES = [
+  { who: 'boulder', text: "I'm so glad I freed you!", time: 170 },
+  { who: 'baby', text: 'Ah goo a gah!', time: 130 },
+  { who: 'boulder', text: 'We need to get out of here before more stuff chases us!', time: 230 },
+];
+
+function startEnding() {
+  const u = LEVEL.underground, lockX = 3228 + 28;
+  ending = {
+    step: 'unlockFloor', t: 0, line: 0, ctrl: { left: false, right: false, jump: false, jumpPressed: false, down: false, downPressed: false },
+    floorOpen: 0, cageOpen: 0, key: { x: boulder.x, y: boulder.y, show: true }, lockX, scriptX: u.chamberX + 40, wait: 0,
+  };
+  boulder.vx = 0; sfx.checkpoint();
+}
+
+function flyKey(k, tx, ty, p) { // moves the key icon from where it was toward the lock
+  k.x += (tx - k.x) * p; k.y += (ty - k.y) * p;
+}
+
+function updateEnding() {
+  const e = ending, b = boulder, u = LEVEL.underground, c = e.ctrl;
+  e.t++;
+  const next = (step) => { e.step = step; e.t = 0; };
+  const skip = input.jumpPressed; input.jumpPressed = false; // jump/tap speeds up dialogue
+  if (e.step === 'unlockFloor') {
+    flyKey(e.key, e.lockX, 172, 0.12);
+    if (e.t === 28) { // click! the lock pops
+      beep(900, 0.08, 'square', 0.06, 300); spawnBurst(e.lockX, 172, ['#ffd23f', '#fff6b0'], 16, 1.8); e.key.show = false;
+    }
+    if (e.t > 30) e.floorOpen = Math.min(1, (e.t - 30) / 30);
+    if (e.t === 60) { solids = solids.filter((sd) => sd[4] !== 'brick'); beep(130, 0.4, 'sawtooth', 0.06, -60); shake = 12; next('fall'); }
+  } else if (e.step === 'fall') { // you drop into the chamber, then roll over next to the cage
+    const landed = b.onGround && b.y > u.floorY - 40;
+    if (landed || e.t > 240) e.wait++;
+    if (e.wait > 15) next('toCage');
+  } else if (e.step === 'toCage') {
+    const dx = e.scriptX - b.x; c.right = dx > 6; c.left = dx < -6;
+    if (Math.abs(dx) <= 6 || e.t > 200) { c.right = c.left = false; e.key = { x: b.x, y: b.y, show: true }; next('cageUnlock'); }
+  } else if (e.step === 'cageUnlock') { // the key flies to the cage's lock, the cage lifts away
+    flyKey(e.key, u.chamberX + 27, u.floorY - 12, 0.14);
+    if (e.t === 26) { beep(900, 0.08, 'square', 0.06, 300); spawnBurst(u.chamberX + 27, u.floorY - 12, ['#ffd23f', '#fff6b0'], 16, 1.8); e.key.show = false; hasKey = false; }
+    if (e.t === 30) solids = solids.filter((sd) => sd[4] !== 'cage');
+    if (e.t > 30) e.cageOpen = Math.min(1, (e.t - 30) / 30);
+    if (e.t === 62) { baby.free = true; baby.vy = -2.6; sfx.checkpoint(); next('talk'); }
+  } else if (e.step === 'talk') {
+    const line = ENDING_LINES[e.line];
+    if (line.who === 'baby' && e.t % 34 === 2) baby.vy = -2.2; // the baby hops while it talks
+    if (e.t > line.time || (skip && e.t > 25)) { e.line++; e.t = 0; if (e.line >= ENDING_LINES.length) next('rollOut'); }
+  } else if (e.step === 'rollOut') { // both roll off to the right through the tunnel
+    c.right = true;
+    if (e.t > 12) baby.vx = Math.min(TUNE.maxSpeed, baby.vx + 0.2);
+    if (b.x > LEVEL.width + 30 && baby.x > LEVEL.width + 30) { state = 'win'; sfx.win(); }
+  }
+}
+
+function updateBaby() {
+  if (!baby) return;
+  const floor = LEVEL.underground.floorY - 6;
+  if (baby.free) { baby.vy += TUNE.gravity; baby.y += baby.vy; baby.x += baby.vx; }
+  if (baby.y >= floor) { baby.y = floor; baby.vy = 0; }
+  baby.rot += baby.vx / 6;
+}
+
 function updateFx() {
   for (const q of particles) { q.x += q.vx; q.y += q.vy; q.vy += 0.1; q.life--; }
   particles = particles.filter((q) => q.life > 0);
@@ -547,6 +673,9 @@ function update() {
       updateBoulder();
       updatePeople();
       updateBoss();
+      updateKey();
+      if (ending) updateEnding();
+      updateBaby();
     }
     if (introTimer > 0) introTimer--;
   } else if (input.jumpPressed) {
@@ -558,6 +687,11 @@ function update() {
   updateFx();
   const target = boss && boss.active ? LEVEL.boss.camX : clamp(boulder.x - 110, 0, LEVEL.width - W);
   if (bossIntro > 0 && state === 'play') bossIntro--;
+  // once you're underground the camera follows you down (it never scrolls vertically anywhere else)
+  const un = LEVEL.underground, targetY = un && boulder.x > un.x0 ? clamp((boulder.y - 152) * 1.2, 0, un.maxCamY) : 0;
+  camY += (targetY - camY) * 0.12;
+  if (shake > 0) shake--;
+  if (lockedHint > 0) lockedHint--;
   camX += (target - camX) * 0.15;
 }
 
@@ -675,9 +809,39 @@ const SOLID_STYLE = {
   },
 };
 
-function drawSolid([x, y, w, h]) {
+function drawSand(sx, y, w, h) {
+  px(sx, y, w, h, '#e3c276');
+  for (let i = 0; i < w; i += 4) px(sx + i, y, 4, 2 + ((i / 4) % 2), '#f0d890'); // bumpy top
+  for (let i = 0; i < w; i += 3) for (let j = 4; j < h; j += 5) if ((i * 5 + j * 11) % 7 < 2) px(sx + i, y + j, 1, 1, '#c9a75a');
+  px(sx, y + h - 1, w, 1, '#c9a75a');
+}
+
+// The locked floor under the sand: two brick halves with a padlock. When the key opens it they slide apart into the walls.
+function drawBrick(sx, y, w, h) {
+  const p = ending ? ending.floorOpen : 0, half = w / 2, slide = Math.round(p * half);
+  ctx.save(); ctx.beginPath(); ctx.rect(sx, y, w, h); ctx.clip(); // the halves vanish into the walls, not over them
+  const bricks = (x0, w0) => {
+    px(x0, y, w0, h, '#8a4f3b'); px(x0, y, w0, 1, '#b06a52');
+    for (let r = 0; r < 3; r++) {
+      px(x0, y + 4 + r * 4 - 1, w0, 1, '#4a2a22');
+      for (let k = (r % 2) * 5; k < w0; k += 10) px(x0 + k, y + r * 4, 1, 4, '#4a2a22');
+    }
+  };
+  bricks(sx - slide, half); bricks(sx + half + slide, half);
+  ctx.restore();
+  if (!ending || ending.step !== 'unlockFloor' || ending.t < 28) { // the padlock
+    const cx = sx + half, ly = y + 2 + (lockedHint > 0 && frame % 4 < 2 ? 1 : 0);
+    px(cx - 3, ly, 6, 1, '#b8860b'); px(cx - 3, ly, 1, 4, '#b8860b'); px(cx + 2, ly, 1, 4, '#b8860b');
+    px(cx - 4, ly + 3, 8, 7, '#ffd23f'); px(cx - 4, ly + 3, 8, 1, '#fff6b0'); px(cx - 1, ly + 5, 2, 3, '#3b2a18');
+  }
+}
+
+function drawSolid([x, y, w, h, type]) {
   const sx = Math.round(x - camX);
   if (sx > W || sx + w < 0) return;
+  if (type === 'sand') return drawSand(sx, y, w, h);
+  if (type === 'brick') return drawBrick(sx, y, w, h);
+  if (type === 'cage') return; // drawn together with the baby rock
   const st = SOLID_STYLE[LEVEL.theme];
   const [body, speck, top, shade] = st.stone && y !== GROUND_Y ? st.stone : st.ground;
   px(sx, y, w, h, body);
@@ -713,6 +877,77 @@ function drawPits() {
     // darker walls so the hole has depth
     px(sx, GROUND_Y, 2, H - GROUND_Y, 'rgba(0,0,0,0.5)'); px(sx + w - 2, GROUND_Y, 2, H - GROUND_Y, 'rgba(0,0,0,0.5)');
   }
+}
+
+// The dark hollow under the arena floor: the chamber under the brick floor and the tunnel leading out. Drawn behind the solids.
+function drawCavity() {
+  const u = LEVEL.underground;
+  if (!u) return;
+  const sx = Math.round(u.chamberX - camX);
+  px(sx, 178, u.chamberW, u.floorY - 178, '#120e1a'); px(sx + u.chamberW, u.tunnelY, 130, u.floorY - u.tunnelY, '#120e1a');
+  for (let y = 182; y < u.floorY; y += 8) for (let x = sx + ((y / 8) % 2) * 6; x < sx + u.chamberW; x += 12) px(x, y, 1, 8, '#1d1727');
+  for (let y = 186; y < u.floorY; y += 8) px(sx, y, u.chamberW, 1, '#1d1727');
+  disc(sx + 28, 205, 26, 'rgba(255,170,80,0.05)'); // faint warm light
+}
+
+function drawKey(x, y) {
+  const bob = Math.round(Math.sin(frame * 0.12) * 1);
+  const sx = Math.round(x), sy = Math.round(y) + bob;
+  px(sx - 7, sy - 3, 6, 6, '#ffd23f'); px(sx - 6, sy - 2, 4, 4, '#b8860b'); px(sx - 5, sy - 1, 2, 2, '#ffd23f'); // ring
+  px(sx - 1, sy - 1, 9, 2, '#ffd23f'); px(sx + 5, sy + 1, 2, 3, '#ffd23f'); px(sx + 2, sy + 1, 2, 2, '#ffd23f'); // shaft and teeth
+  px(sx - 7, sy - 3, 6, 1, '#fff6b0');
+  if (frame % 30 < 4) px(sx + 3, sy - 4, 1, 1, '#fff');
+}
+
+function drawBaby() {
+  if (!baby) return;
+  const x = Math.round(baby.x - camX), y = Math.round(baby.y), r = 6;
+  if (x < -20 || x > W + 20) return;
+  disc(x, y, r + 1, '#3a3a46'); disc(x, y, r, '#b9b9cc');
+  for (let i = 0; i < 3; i++) { const a = baby.rot + i * 2.1; px(x + Math.cos(a) * 3, y + Math.sin(a) * 3, 1, 1, '#8b8ba0'); }
+  px(x - 1, y - r - 2, 1, 2, '#7fcf86'); px(x + 1, y - r - 3, 1, 3, '#7fcf86'); // a little tuft of baby grass
+  px(x - 3, y - 2, 2, 3, '#fff'); px(x + 1, y - 2, 2, 3, '#fff'); px(x - 2, y - 1, 1, 2, '#111'); px(x + 2, y - 1, 1, 2, '#111'); // big eyes
+  px(x - 1, y + 2, 2, 1, '#111');
+  px(x - 5, y + 1, 2, 1, '#ffb3c8'); px(x + 4, y + 1, 2, 1, '#ffb3c8'); // blushing cheeks
+}
+
+function drawCage() {
+  const u = LEVEL.underground;
+  if (!u) return;
+  const p = ending ? ending.cageOpen : 0;
+  if (p >= 1) return;
+  const x = Math.round(3231 - camX), y = 212 - Math.round(p * 28), w = 24, h = 24;
+  for (let i = 0; i < w; i += 5) px(x + i, y, 2, h, '#9aa3bd');
+  px(x - 1, y, w + 2, 3, '#6a728c'); px(x - 1, y + h - 2, w + 2, 2, '#6a728c');
+  if (!ending || ending.step !== 'cageUnlock' || ending.t < 26) { // the cage's padlock
+    px(x + w - 6, y + 9, 7, 6, '#ffd23f'); px(x + w - 5, y + 7, 5, 2, '#b8860b'); px(x + w - 3, y + 11, 1, 2, '#3b2a18');
+  }
+}
+
+function drawBubble(speakerX, speakerY, msg, pink) {
+  ctx.font = 'bold 7px monospace'; ctx.textAlign = 'left';
+  const lines = []; let cur = '';
+  for (const word of msg.split(' ')) {
+    if (cur && ctx.measureText(cur + ' ' + word).width > 120) { lines.push(cur); cur = word; } else cur = cur ? cur + ' ' + word : word;
+  }
+  lines.push(cur);
+  const w = Math.ceil(Math.max(...lines.map((l) => ctx.measureText(l).width))) + 12, h = lines.length * 9 + 7;
+  const sx = speakerX - camX, sy = speakerY - camY;
+  const bx = Math.round(clamp(sx - w / 2, 6, W - 6 - w)), by = Math.max(8, Math.round(sy - 22 - h));
+  px(bx - 1, by - 1, w + 2, h + 2, '#1b1f3a'); px(bx, by, w, h, pink ? '#ffe3f1' : '#ffffff');
+  const tx = Math.round(clamp(sx, bx + 5, bx + w - 6)); // little tail pointing at who's talking
+  px(tx - 3, by + h, 7, 1, pink ? '#ffe3f1' : '#fff'); px(tx - 2, by + h + 1, 5, 2, pink ? '#ffe3f1' : '#fff'); px(tx - 1, by + h + 3, 3, 2, pink ? '#ffe3f1' : '#fff');
+  px(tx - 1, by + h + 5, 1, 1, '#1b1f3a');
+  ctx.fillStyle = '#1b1f3a';
+  lines.forEach((l, i) => ctx.fillText(l, bx + 6, by + 9 + i * 9));
+  if (frame % 40 < 28) px(bx + w - 8, by + h - 5, 4, 1, '#8a8fb0'), px(bx + w - 7, by + h - 4, 2, 1, '#8a8fb0'); // "tap to go on"
+}
+
+// Little bouncing arrow (pointing down) at a world position
+function drawArrow(x, y) {
+  const bob = Math.round(Math.sin(frame * 0.15) * 3), sx = Math.round(x - camX);
+  for (let r = 0; r < 4; r++) px(sx - 3 + r, y + r + bob, 7 - 2 * r, 1, '#ffd23f');
+  px(sx - 1, y - 4 + bob, 3, 4, '#ffd23f');
 }
 
 function drawDecor([x, kind]) {
@@ -937,6 +1172,7 @@ function drawBoulder() {
     px(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 2, 2, '#6c6c7a');
   }
   px(cx - r + 2, cy - r + 3, 2, 2, '#c4c4d0');
+  if (b.smashing) for (let k = -1; k <= 1; k++) px(cx + k * 5, cy - r - 9 - ((frame * 2) % 5), 1, 6, 'rgba(255,255,255,0.75)'); // speed lines
   // face (does not rotate)
   const ex = b.face * 1;
   px(cx - 4 + ex, cy - 3, 3, 4, '#fff'); px(cx + 1 + ex, cy - 3, 3, 4, '#fff');
@@ -959,28 +1195,57 @@ function text(str, x, y, color = '#fff', align = 'left', size = 8) {
 }
 
 function draw() {
+  px(0, 0, W, H, '#000');
+  ctx.save();
+  const sh = shake > 0 ? Math.min(2, Math.ceil(shake / 4)) * (frame % 2 ? 1 : -1) : 0;
+  ctx.translate(sh, -Math.round(camY)); // the world layer: scrolls down when you go underground, shakes on a smash
   drawBackground();
   drawPits();
-  LEVEL.solids.forEach(drawSolid);
+  drawCavity();
+  solids.forEach(drawSolid);
   LEVEL.decor.forEach(drawDecor);
   LEVEL.checkpoints.forEach((cp) => drawFlag(cp, spawnX >= cp ? '#4fe36b' : '#999'));
   if (LEVEL.goalX) drawFlag(LEVEL.goalX, '#ffd23f');
-  if (LEVEL.boss) px(LEVEL.boss.arenaLeft - 12, GROUND_Y - 1, 310, 1, '#a3212e'); // red carpet into the arena
+  if (LEVEL.boss) { // red carpet into the arena (not over the sand patch)
+    px(LEVEL.boss.arenaLeft - 12 - camX, GROUND_Y - 1, 3228 - LEVEL.boss.arenaLeft + 12, 1, '#a3212e');
+    px(3284 - camX, GROUND_Y - 1, 108, 1, '#a3212e');
+  }
   LEVEL.spikes.forEach(drawSpikes);
   LEVEL.lasers.forEach(drawLaser);
   decals.forEach(drawDecal);
   people.forEach((p) => p.alive && DRAW_PERSON[LEVEL.kind](p));
   drawBoss();
+  if (key && !key.taken) drawKey(key.x - camX, key.y);
+  if (boss && boss.dead && !ending) {
+    if (key && !key.taken) drawArrow(key.x, key.y - 26);
+    else if (hasKey && solids.some((sd) => sd[4] === 'sand')) drawArrow(3256, 124);
+  }
+  drawBaby();
+  drawCage();
   drawBoulder();
+  if (ending && ending.key.show) drawKey(ending.key.x - camX, ending.key.y);
   ghosts.forEach(drawGhost);
   for (const q of particles) px(q.x - camX, q.y, q.size, q.size, q.color);
   for (const f of floaters) text(f.text, f.x - camX, f.y, '#fff', 'center');
+  ctx.restore();
 
   // HUD
   text('SQUISHED ' + squished + '/' + LEVEL.people.length, 6, 12);
   text('LEVEL ' + (levelIndex + 1), W / 2, 12, '#ffd23f', 'center');
   drawBossHud();
+  if (hasKey && !ending) drawKey(W - 14, 26); // the key you're carrying
   text('LIVES ' + Math.max(0, lives), W - 6, 12, '#ffb3b3', 'right');
+
+  if (state === 'play' && boss && boss.dead && !ending) {
+    const msg = lockedHint > 0 ? 'LOCKED! You need the key.' : key && !key.taken ? 'Grab the key!'
+      : hasKey && solids.some((sd) => sd[4] === 'sand') ? 'Jump, then press DOWN to smash the sand!' : '';
+    if (msg) text(msg, W / 2, 58, '#ffd23f', 'center', 8);
+  }
+  if (ending && ending.step === 'talk') {
+    const line = ENDING_LINES[ending.line];
+    if (line.who === 'baby') drawBubble(baby.x, baby.y - 8, line.text, true);
+    else drawBubble(boulder.x, boulder.y - TUNE.radius, line.text, false);
+  }
 
   const lastLevel = levelIndex === LEVELS.length - 1;
   if (state === 'title') {
@@ -991,8 +1256,8 @@ function draw() {
     text('Press jump to start', W / 2, 118, '#fff', 'center');
   } else if (state === 'win' || state === 'gameover') {
     px(40, 52, W - 80, 70, 'rgba(0,0,0,0.55)');
-    const title = state === 'gameover' ? 'GAME OVER' : lastLevel ? 'YOU BEAT THE GAME!' : 'LEVEL CLEAR!';
-    text(title, W / 2, 78, state === 'win' ? '#4fe36b' : '#ff6b6b', 'center', 16);
+    const title = state === 'gameover' ? 'GAME OVER' : LEVEL.boss ? 'YOU SAVED THE BABY ROCK!' : lastLevel ? 'YOU BEAT THE GAME!' : 'LEVEL CLEAR!';
+    text(title, W / 2, 78, state === 'win' ? '#4fe36b' : '#ff6b6b', 'center', title.length > 20 ? 12 : 16);
     text('Squished ' + squished + ' of ' + LEVEL.people.length, W / 2, 98, '#fff', 'center');
     text(state === 'win' && !lastLevel ? 'Press jump for the next level' : state === 'win' ? 'Press jump to play again' : 'Press jump to try again', W / 2, 112, '#ccc', 'center');
   } else if (introTimer > 0) {
@@ -1025,4 +1290,4 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // Test hook for automated checks (harmless in the browser).
-window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, get boss() { return boss; }, get menuOpen() { return menuOpen; }, gateState, sweepY, laserHits, input, update };
+window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, get boss() { return boss; }, get ending() { return ending; }, get hasKey() { return hasKey; }, get key() { return key; }, get baby() { return baby; }, get camY() { return camY; }, get solids() { return solids; }, get menuOpen() { return menuOpen; }, gateState, sweepY, laserHits, input, update };

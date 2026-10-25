@@ -16,12 +16,15 @@
 - [x] Level 2: the Graveyard (night, zombies that shamble toward you, slow floating ghosts instead of spikes)
 - [x] Level 3: the Castle (brick halls with torches and banners, knights with red feathers, laser gates and sweeping lasers instead of spikes)
 - [x] Boss: the Giant Knight at the end of the Castle (land on his head from the ledges; his sword only reaches the ground)
+- [x] Smash move: jump, then press down (▼ button on phones) to ground-pound; breaks sand (reusable for other smashable things)
+- [x] Level 3 ending: the boss drops a key, smash the sand, unlock the brick floor and cage, free the baby rock, and roll off together
 - [x] Level progression: beat a level to unlock the next; game over retries the same level
 
 ## Ideas backlog (add yours here!)
 - [ ] Level 4 and beyond (ideas: ice cave, lava, candy land, space) and a proper level select screen
 - [ ] Boulder gets bigger (or faster) as it squishes people
 - [ ] More kinds of enemies: runners, archers who shoot back, people who throw things
+- [ ] More things to smash (crates, ice, cracked floors that hide secrets) and a proper story ending for the baby rock
 - [ ] Power-ups (rocket boulder, bouncy boulder)
 - [ ] Bosses for levels 1 and 2 (ideas: a giant ghost, a zombie king)
 - [ ] Better title screen, boulder name, and a high-score list
