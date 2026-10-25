@@ -13,9 +13,11 @@
 - [x] Spikes and pits cost a life, with checkpoints
 - [x] Lives, score, win/game-over screens
 - [x] Keyboard and touch controls (phone friendly)
+- [x] Level 2: the Graveyard (night, zombies that shamble toward you, slow floating ghosts instead of spikes)
+- [x] Level progression: beat a level to unlock the next; game over retries the same level
 
 ## Ideas backlog (add yours here!)
-- [ ] More levels / level select
+- [ ] Level 3 and beyond (ideas: ice cave, lava, castle, candy land) and a proper level select screen
 - [ ] Boulder gets bigger (or faster) as it squishes people
 - [ ] Different people: knights with shields, runners, people who throw things
 - [ ] Power-ups (rocket boulder, bouncy boulder)

@@ -4,7 +4,7 @@ A browser side-scroller: you're a boulder, squish people, avoid spikes. Plain HT
 
 ## Layout
 - `index.html`: page, canvas, on-screen touch buttons
-- `game.js`: all game code (tunables at the top in `TUNE`, level in `LEVEL`, then input, sound, update, draw, main loop)
+- `game.js`: all game code (tunables at the top in `TUNE`, levels in the `LEVELS` array, then input, sound, update, draw, main loop)
 - `PLAN.md`: concept, done list, ideas backlog. Update it when features land.
 - Hosting: GitHub Pages deploys the repo root from the `main` branch (no workflow file needed)
 
@@ -12,7 +12,10 @@ A browser side-scroller: you're a boulder, squish people, avoid spikes. Plain HT
 - Logical resolution is 320x180; CSS scales it with `image-rendering: pixelated`. Draw with integer coordinates and the `px()` / `disc()` helpers.
 - All art is drawn in code. No image files unless the owner asks for them.
 - Keep it a single `game.js` until it gets painful; then split into plain `<script>` files (no bundler).
-- Game feel numbers live in `TUNE`; level layout lives in `LEVEL`. Prefer editing those over scattering magic numbers.
+- Game feel numbers live in `TUNE`; level layout lives in the `LEVELS` array (`LEVEL` is the current one). Prefer editing those over scattering magic numbers.
+- Adding a level: append an object to `LEVELS` (name, theme `'day'`/`'night'`, hint, width, solids, spikes and/or ghosts, people, checkpoints, goalX). `chase: true` makes the people zombies that walk toward you. A new theme needs a background function, a `SOLID_STYLE` entry and, if it has new enemies, a draw function.
+- Ghosts are `[centerX, centerY, patrolRange, phase]`, drift slowly back and forth via `ghostPos()`, and kill on touch like spikes. Keep ground ghosts at centerY ~136 (they block the path, so you jump over them), keep them 80px+ from pit edges, and keep every checkpoint 40px+ from any ghost's patrol (check with the spawn test below).
+- Platforms you must jump onto should have a top at y >= 108 (jump height is ~50px).
 - Level design rules learned the hard way: checkpoints must be on solid ground (not over a pit); don't put a platform within ~50px above the ground where a spike jump happens (the boulder bonks its head); don't pack a spike right before a pit.
 - Spikes on a floating platform only make sense if the platform is long enough to jump over them (roughly spike width + 60px of platform on each side). Otherwise leave the platform spike-free.
 - People never walk onto spikes (`walkLimits` trims their walk range), so no extra work is needed when adding spikes.
@@ -20,5 +23,6 @@ A browser side-scroller: you're a boulder, squish people, avoid spikes. Plain HT
 
 ## Running and testing
 - `python3 -m http.server 8000` then open http://localhost:8000
+- Start on a specific level with `index.html?level=2`; on the title screen, pressing 1, 2, ... also picks a level.
 - `window.__game` exposes state for automated tests (Playwright is available in cloud sessions).
 - After a change, check the browser console for errors and play through the part you changed.

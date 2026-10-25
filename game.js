@@ -20,12 +20,17 @@ const TUNE = {
   lives: 3,
   fleeRadius: 70,
   fleeSpeed: 0.9,
+  chaseRadius: 80, // zombies shamble toward you from this far away
+  chaseSpeed: 0.4,
+  ghostRadius: 5,
+  ghostSpeed: 0.018, // how fast ghosts drift back and forth (smaller = slower)
 };
 
 // ---------- Level ----------
 // Solid rectangles are [x, y, w, h]. Ground top is y=150.
 const GROUND_Y = 150;
-const LEVEL = {
+const LEVELS = [{
+  name: 'SUNNY HILLS', theme: 'day', hint: 'Roll over people. Dodge spikes!',
   width: 2900,
   solids: [
     [0, GROUND_Y, 480, 30], [540, GROUND_Y, 320, 30], [920, GROUND_Y, 380, 30],
@@ -50,7 +55,56 @@ const LEVEL = {
   ],
   checkpoints: [940, 1880, 2380],
   goalX: 2820,
-};
+}, {
+  name: 'THE GRAVEYARD', theme: 'night', chase: true, hint: 'Squish the zombies. Dodge the ghosts!',
+  width: 3200,
+  solids: [
+    [0, GROUND_Y, 620, 30], [670, GROUND_Y, 520, 30], [1240, GROUND_Y, 700, 30],
+    [1990, GROUND_Y, 520, 30], [2560, GROUND_Y, 640, 30],
+    // crypt roofs and tombstone steps
+    [800, 112, 90, 8], [1380, 108, 140, 8], [1700, 132, 30, 18], [1730, 114, 30, 36], [2200, 108, 80, 8],
+  ],
+  // ghosts float back and forth slowly: [centerX, centerY, patrolRange, phase]
+  ghosts: [
+    [360, 136, 36, 0], [760, 136, 30, 2], [1000, 136, 40, 4], [1360, 136, 40, 1],
+    [1450, 94, 25, 3], [1600, 136, 36, 5], [2100, 136, 36, 2], [2380, 136, 40, 0],
+    [2700, 136, 30, 4], [2900, 136, 36, 1],
+  ],
+  // zombies: [x, floorY, walkMin, walkMax]
+  people: [
+    [150, GROUND_Y, 100, 260], [300, GROUND_Y, 250, 430], [520, GROUND_Y, 450, 600],
+    [740, GROUND_Y, 700, 860], [840, 112, 805, 885], [950, GROUND_Y, 900, 1100],
+    [1120, GROUND_Y, 1080, 1180], [1300, GROUND_Y, 1260, 1340], [1540, GROUND_Y, 1500, 1650],
+    [1800, GROUND_Y, 1770, 1900], [2060, GROUND_Y, 2010, 2200], [2240, 108, 2210, 2270],
+    [2440, GROUND_Y, 2400, 2490], [2780, GROUND_Y, 2740, 2840], [2980, GROUND_Y, 2940, 3060],
+  ],
+  checkpoints: [1260, 2020, 2600],
+  goalX: 3120,
+}];
+
+// Scenery (tombstones, crosses, dead trees, fences) scattered on solid ground; drawn behind everything.
+function genDecor(level) {
+  const out = [];
+  const onGround = (x) => level.solids.some(([sx, sy, sw]) => sy === GROUND_Y && x > sx + 8 && x < sx + sw - 8);
+  for (let x = 70, i = 0; x < level.width - 60; x += 38 + ((i * 37) % 31), i++) {
+    if (!onGround(x)) continue;
+    if (level.checkpoints.some((c) => Math.abs(c - x) < 24) || Math.abs(level.goalX - x) < 24) continue;
+    out.push([x, ['stone', 'cross', 'tree', 'stone', 'fence'][i % 5]]);
+  }
+  return out;
+}
+LEVELS.forEach((l) => {
+  l.spikes = l.spikes || [];
+  l.ghosts = l.ghosts || [];
+  l.decor = l.theme === 'night' ? genDecor(l) : [];
+});
+let levelIndex = 0, LEVEL = LEVELS[0];
+function setLevel(i) { levelIndex = i; LEVEL = LEVELS[i]; }
+// Visit index.html?level=2 to start on a given level; on the title screen, press 1, 2, ... to pick one.
+{
+  const n = parseInt(new URLSearchParams(location.search).get('level'), 10);
+  if (n >= 1 && n <= LEVELS.length) setLevel(n - 1);
+}
 
 // ---------- Input ----------
 const input = { left: false, right: false, jump: false, jumpPressed: false };
@@ -66,6 +120,7 @@ function setInput(name, down) {
 addEventListener('keydown', (e) => {
   const n = keyMap[e.key];
   if (n) { e.preventDefault(); setInput(n, true); audioInit(); }
+  else if (state !== 'play' && LEVELS[+e.key - 1]) { setLevel(+e.key - 1); startGame(); }
 });
 addEventListener('keyup', (e) => {
   const n = keyMap[e.key];
@@ -112,7 +167,7 @@ const sfx = {
 
 // ---------- Game state ----------
 let state = 'title'; // title | play | win | gameover
-let boulder, people, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame;
+let boulder, people, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame, introTimer = 0;
 
 // People never walk onto spikes: trim each walk range at the nearest spike on their floor.
 function walkLimits(x, floorY, min, max) {
@@ -140,7 +195,7 @@ function respawn() {
   particles = []; floaters = []; deadTimer = 0;
   camX = Math.max(0, spawnX - 110);
 }
-function startGame() { resetRun(); state = 'play'; input.jumpPressed = false; }
+function startGame() { resetRun(); state = 'play'; introTimer = 150; input.jumpPressed = false; }
 resetRun();
 
 // ---------- Update ----------
@@ -160,6 +215,12 @@ function die() {
   deadTimer = 70;
   sfx.die();
   spawnBurst(boulder.x, boulder.y, ['#8a8a96', '#b9b9c6', '#5d5d69'], 24, 2.4);
+}
+
+// Ghosts drift back and forth (and bob up and down a little). Returns [x, y, facing].
+function ghostPos([cx, cy, range, phase]) {
+  const t = frame * TUNE.ghostSpeed + phase;
+  return [cx + Math.sin(t) * range, cy + Math.sin(frame * 0.05 + phase) * 3, Math.cos(t) >= 0 ? 1 : -1];
 }
 
 function hitsCircleRect(cx, cy, r, rx, ry, rw, rh) {
@@ -214,6 +275,11 @@ function updateBoulder() {
   for (const [sx, sw, sy = GROUND_Y] of LEVEL.spikes) {
     if (hitsCircleRect(b.x, b.y, r - 1, sx + 1, sy - 5, sw - 2, 5)) { die(); return; }
   }
+  // ghosts
+  for (const g of LEVEL.ghosts) {
+    const [gx, gy] = ghostPos(g), reach = r - 1 + TUNE.ghostRadius;
+    if ((b.x - gx) ** 2 + (b.y - gy) ** 2 < reach * reach) { die(); return; }
+  }
   // pits
   if (b.y > H + 30) { die(); return; }
 
@@ -223,7 +289,7 @@ function updateBoulder() {
     if (hitsCircleRect(b.x, b.y, r, p.x - 3, p.floorY - 10, 6, 10)) {
       p.alive = false; squished++;
       decals.push({ x: p.x, y: p.floorY, hue: p.hue });
-      spawnBurst(p.x, p.floorY - 5, ['#ffe14d', '#fff', '#ff7ab8'], 10, 1.4);
+      spawnBurst(p.x, p.floorY - 5, LEVEL.chase ? ['#9be07a', '#eaeaea', '#c9b8ff'] : ['#ffe14d', '#fff', '#ff7ab8'], 10, 1.4);
       floaters.push({ x: p.x, y: p.floorY - 14, text: '+1', life: 40 });
       sfx.squish();
     }
@@ -240,6 +306,15 @@ function updatePeople() {
   for (const p of people) {
     if (!p.alive) continue;
     const dx = p.x - boulder.x;
+    if (LEVEL.chase) { // zombies shamble toward you instead of running away
+      const chase = Math.abs(dx) < TUNE.chaseRadius && Math.abs(boulder.y - p.floorY) < 40;
+      if (chase) p.dir = dx >= 0 ? -1 : 1;
+      else if (Math.random() < 0.005) p.dir *= -1;
+      p.x += p.dir * (chase ? TUNE.chaseSpeed : p.speed);
+      if (p.x < p.min) { p.x = p.min; if (!chase) p.dir = 1; }
+      if (p.x > p.max) { p.x = p.max; if (!chase) p.dir = -1; }
+      continue;
+    }
     const near = Math.abs(dx) < TUNE.fleeRadius && Math.abs(boulder.y - p.floorY) < 40;
     p.scared = near;
     if (near) p.dir = dx >= 0 ? 1 : -1;
@@ -271,7 +346,10 @@ function update() {
       updateBoulder();
       updatePeople();
     }
+    if (introTimer > 0) introTimer--;
   } else if (input.jumpPressed) {
+    // after a win go to the next level (wrapping to level 1); after game over retry the same one
+    if (state === 'win') setLevel((levelIndex + 1) % LEVELS.length);
     startGame();
   }
   updateFx();
@@ -290,7 +368,40 @@ function disc(cx, cy, r, c) {
   }
 }
 
+const hillH = (wx) => 28 + Math.sin(wx * 0.02) * 10 + Math.sin(wx * 0.047) * 5;
+
 function drawBackground() {
+  if (LEVEL.theme === 'night') drawNightBackground(); else drawDayBackground();
+}
+
+function drawNightBackground() {
+  ['#0b1030', '#121a4a', '#1b2760', '#26337a'].forEach((c, i) => px(0, i * 38, W, 38, c));
+  // twinkling stars
+  for (let i = 0; i < 45; i++) {
+    const x = (((i * 97 - camX * 0.05) % W) + W) % W, y = (i * 37) % 105;
+    if (((frame >> 4) + i) % 7 !== 0) px(x, y, 1, 1, i % 4 === 0 ? '#fff6b0' : '#cfd8ff');
+  }
+  // moon
+  disc(252, 36, 19, 'rgba(244,239,200,0.12)');
+  disc(252, 36, 14, '#f4efc8');
+  px(246, 30, 4, 3, '#dcd6a8'); px(256, 38, 5, 4, '#dcd6a8'); px(248, 43, 3, 2, '#dcd6a8');
+  // far hills with tombstone, cross and dead-tree silhouettes
+  const far = camX * 0.4;
+  for (let sx = 0; sx < W; sx++) px(sx, GROUND_Y - hillH(sx + far) + 6, 1, hillH(sx + far) - 6, '#1b2552');
+  for (let k = Math.floor(far / 53); k < Math.floor(far / 53) + 8; k++) {
+    const sx = k * 53 - far, base = GROUND_Y - hillH(k * 53) + 6, kind = k % 4;
+    if (kind === 0) { px(sx - 3, base - 10, 6, 10, '#141b42'); px(sx - 2, base - 12, 4, 2, '#141b42'); }
+    else if (kind === 1) { px(sx - 1, base - 14, 2, 14, '#141b42'); px(sx - 4, base - 11, 8, 2, '#141b42'); }
+    else if (kind === 2) { px(sx - 1, base - 22, 3, 22, '#141b42'); px(sx - 7, base - 17, 6, 2, '#141b42'); px(sx + 2, base - 13, 7, 2, '#141b42'); px(sx - 8, base - 20, 2, 4, '#141b42'); px(sx + 7, base - 17, 2, 5, '#141b42'); }
+  }
+  // drifting fog
+  for (let i = 0; i < 6; i++) {
+    const x = ((i * 90 - camX * 0.7 - frame * 0.15) % (W + 80) + (W + 80)) % (W + 80) - 40;
+    px(x, GROUND_Y - 12 - (i % 3) * 5, 60, 4, 'rgba(170,190,255,0.09)');
+  }
+}
+
+function drawDayBackground() {
   px(0, 0, W, H, '#8fd3ff');
   // clouds
   for (let i = 0; i < 8; i++) {
@@ -306,15 +417,44 @@ function drawBackground() {
   }
 }
 
+// [body, speckles, top edge, top shade]. Night levels use stone for everything above the ground.
+const SOLID_STYLE = {
+  day: { ground: ['#8a5a35', '#6e4426', '#4fb04f', '#3d8f3d'] },
+  night: {
+    ground: ['#3b2f45', '#2c2236', '#2f5a45', '#244a38'],
+    stone: ['#5c617c', '#484c66', '#8d93ad', '#6e7390'],
+  },
+};
+
 function drawSolid([x, y, w, h]) {
   const sx = Math.round(x - camX);
   if (sx > W || sx + w < 0) return;
-  px(sx, y, w, h, '#8a5a35');
+  const st = SOLID_STYLE[LEVEL.theme];
+  const [body, speck, top, shade] = st.stone && y !== GROUND_Y ? st.stone : st.ground;
+  px(sx, y, w, h, body);
   for (let i = 0; i < w; i += 6) for (let j = 6; j < h; j += 7) {
-    if (((i * 7 + j * 13 + x) | 0) % 5 === 0) px(sx + i, y + j, 2, 2, '#6e4426');
+    if (((i * 7 + j * 13 + x) | 0) % 5 === 0) px(sx + i, y + j, 2, 2, speck);
   }
-  px(sx, y, w, 3, '#4fb04f');
-  px(sx, y + 3, w, 1, '#3d8f3d');
+  px(sx, y, w, 3, top);
+  px(sx, y + 3, w, 1, shade);
+}
+
+function drawDecor([x, kind]) {
+  const sx = Math.round(x - camX), y = GROUND_Y;
+  if (sx < -20 || sx > W + 20) return;
+  const c = '#4a4f68', dark = '#2f3348', wood = '#2a2238';
+  if (kind === 'stone') {
+    px(sx - 4, y - 9, 8, 9, c); px(sx - 3, y - 11, 6, 2, c); px(sx - 3, y - 9, 1, 8, '#5d6382');
+    px(sx, y - 8, 1, 4, dark); px(sx - 2, y - 7, 5, 1, dark);
+  } else if (kind === 'cross') {
+    px(sx - 1, y - 14, 3, 14, c); px(sx - 4, y - 11, 9, 3, c);
+  } else if (kind === 'tree') {
+    px(sx - 1, y - 18, 3, 18, wood); px(sx - 6, y - 14, 6, 2, wood); px(sx - 8, y - 17, 2, 4, wood);
+    px(sx + 2, y - 11, 6, 2, wood); px(sx + 6, y - 15, 2, 5, wood); px(sx - 3, y - 21, 2, 4, wood);
+  } else if (kind === 'fence') {
+    for (let k = 0; k < 4; k++) { px(sx - 8 + k * 5, y - 8, 2, 8, '#35304a'); px(sx - 8 + k * 5, y - 10, 2, 2, '#35304a'); }
+    px(sx - 8, y - 6, 17, 1, '#35304a'); px(sx - 8, y - 3, 17, 1, '#35304a');
+  }
 }
 
 function drawSpikes([x, w, y = GROUND_Y]) {
@@ -342,9 +482,39 @@ function drawPerson(p) {
   px(x - 2, y - 10, 1, 1, '#222'); px(x + 1, y - 10, 1, 1, '#222');
 }
 
+const ZOMBIE_CLOTHES = ['#5a4a6e', '#3f6e6a', '#7a5a3a', '#6e3f4f', '#4a5e7a'];
+function drawZombie(p) {
+  const x = Math.round(p.x - camX), y = Math.round(p.floorY), d = p.dir;
+  if (x < -10 || x > W + 10) return;
+  const step = Math.floor(frame / 14) % 2; // slow shamble
+  px(x - 2, y - 3, 2, 3 - (step ? 1 : 0), '#2e3b4e'); px(x, y - 3, 2, 3 - (step ? 0 : 1), '#2e3b4e');
+  px(x - 3, y - 7, 6, 4, ZOMBIE_CLOTHES[p.hue]);
+  px(x - 1 + d, y - 5, 1, 2, '#86c97e'); // rip in the shirt
+  px(x - 2, y - 11, 4, 4, '#86c97e');
+  px(x - 2, y - 12, 1, 1, '#3b4a2e'); px(x + 1, y - 12, 1, 1, '#3b4a2e'); // wispy hair
+  px(x - 2, y - 10, 1, 1, '#f5e663'); px(x + 1, y - 10, 1, 1, '#f5e663'); // glowing eyes
+  px(x - 1, y - 8, 2, 1, '#2c3a24');
+  px(d > 0 ? x + 3 : x - 6, y - 8, 3, 1, '#86c97e'); // arms out front
+}
+
+function drawGhost(g) {
+  const [gx, gy, face] = ghostPos(g);
+  const x = Math.round(gx - camX), y = Math.round(gy);
+  if (x < -20 || x > W + 20) return;
+  disc(x, y, 9, 'rgba(170,215,255,0.16)'); // glow
+  ctx.fillStyle = 'rgba(235,245,255,0.92)';
+  for (let dy = -6; dy <= 0; dy++) { const half = Math.floor(Math.sqrt(36 - dy * dy + 0.5)); ctx.fillRect(x - half, y + dy, half * 2 + 1, 1); }
+  ctx.fillRect(x - 6, y + 1, 13, 5);
+  const wave = Math.floor(frame / 8) % 2; // wavy bottom edge
+  for (let i = 0; i < 13; i += 2) ctx.fillRect(x - 6 + i + wave, y + 6, 2, 2);
+  px(x - 3 + face, y - 2, 2, 3, '#1b1f3a'); px(x + 2 + face, y - 2, 2, 3, '#1b1f3a'); // eyes
+  px(x - 1 + face, y + 2, 2, 2, '#1b1f3a'); // little "oooh" mouth
+}
+
 function drawDecal(d) {
   const x = Math.round(d.x - camX);
   if (x < -10 || x > W + 10) return;
+  if (LEVEL.chase) { px(x - 5, d.y - 1, 10, 1, '#86c97e'); px(x - 2, d.y - 2, 4, 1, '#9be07a'); px(x + 3, d.y - 2, 2, 1, '#eaeaea'); return; }
   px(x - 4, d.y - 1, 8, 1, SHIRTS[d.hue]); px(x - 2, d.y - 2, 4, 1, '#ffd8b0');
 }
 
@@ -385,30 +555,38 @@ function text(str, x, y, color = '#fff', align = 'left', size = 8) {
 function draw() {
   drawBackground();
   LEVEL.solids.forEach(drawSolid);
+  LEVEL.decor.forEach(drawDecor);
   LEVEL.checkpoints.forEach((cp) => drawFlag(cp, spawnX >= cp ? '#4fe36b' : '#999'));
   drawFlag(LEVEL.goalX, '#ffd23f');
   LEVEL.spikes.forEach(drawSpikes);
   decals.forEach(drawDecal);
-  people.forEach((p) => p.alive && drawPerson(p));
+  people.forEach((p) => p.alive && (LEVEL.chase ? drawZombie(p) : drawPerson(p)));
   drawBoulder();
+  LEVEL.ghosts.forEach(drawGhost);
   for (const q of particles) px(q.x - camX, q.y, q.size, q.size, q.color);
   for (const f of floaters) text(f.text, f.x - camX, f.y, '#fff', 'center');
 
   // HUD
   text('SQUISHED ' + squished + '/' + LEVEL.people.length, 6, 12);
+  text('LEVEL ' + (levelIndex + 1), W / 2, 12, '#ffd23f', 'center');
   text('LIVES ' + Math.max(0, lives), W - 6, 12, '#ffb3b3', 'right');
 
+  const lastLevel = levelIndex === LEVELS.length - 1;
   if (state === 'title') {
     px(40, 52, W - 80, 70, 'rgba(0,0,0,0.55)');
     text('BOULDER GAME', W / 2, 78, '#ffd23f', 'center', 16);
-    text('Roll over people. Dodge spikes!', W / 2, 96, '#fff', 'center');
+    text(LEVEL.hint, W / 2, 96, '#fff', 'center');
     text('Arrows/WASD + Space  or  tap buttons', W / 2, 108, '#ccc', 'center');
     text('Press jump to start', W / 2, 118, '#fff', 'center');
   } else if (state === 'win' || state === 'gameover') {
     px(40, 52, W - 80, 70, 'rgba(0,0,0,0.55)');
-    text(state === 'win' ? 'YOU MADE IT!' : 'GAME OVER', W / 2, 78, state === 'win' ? '#4fe36b' : '#ff6b6b', 'center', 16);
+    const title = state === 'gameover' ? 'GAME OVER' : lastLevel ? 'YOU BEAT THE GAME!' : 'LEVEL CLEAR!';
+    text(title, W / 2, 78, state === 'win' ? '#4fe36b' : '#ff6b6b', 'center', 16);
     text('Squished ' + squished + ' of ' + LEVEL.people.length, W / 2, 98, '#fff', 'center');
-    text('Press jump to play again', W / 2, 112, '#ccc', 'center');
+    text(state === 'win' && !lastLevel ? 'Press jump for the next level' : state === 'win' ? 'Press jump to play again' : 'Press jump to try again', W / 2, 112, '#ccc', 'center');
+  } else if (introTimer > 0) {
+    text('LEVEL ' + (levelIndex + 1) + ': ' + LEVEL.name, W / 2, 50, '#ffd23f', 'center', 12);
+    text(LEVEL.hint, W / 2, 64, '#fff', 'center');
   }
 }
 
@@ -424,4 +602,4 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // Test hook for automated checks (harmless in the browser).
-window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get lives() { return lives; }, get people() { return people; }, spikes: LEVEL.spikes, input, update };
+window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get lives() { return lives; }, get people() { return people; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, ghostPos, input, update };
