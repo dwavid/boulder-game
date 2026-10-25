@@ -8,7 +8,7 @@ You're a boulder. Roll around, run over people, and don't land on spikes.
 
 **Play online:** deployed with GitHub Pages at https://dwavid.github.io/boulder-game/ (once Pages is enabled; see below).
 
-**Levels:** 1 Sunny Hills (spikes), 2 The Graveyard (zombies and ghosts). Add `?level=2` to the URL to jump straight to a level.
+**Levels:** 1 Sunny Hills (spikes), 2 The Graveyard (zombies and ghosts), 3 The Castle (knights and lasers). Add `?level=3` to the URL to jump straight to a level.
 
 See [PLAN.md](PLAN.md) for the roadmap.
 

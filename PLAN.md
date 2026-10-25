@@ -14,12 +14,13 @@
 - [x] Lives, score, win/game-over screens
 - [x] Keyboard and touch controls (phone friendly)
 - [x] Level 2: the Graveyard (night, zombies that shamble toward you, slow floating ghosts instead of spikes)
+- [x] Level 3: the Castle (brick halls with torches and banners, knights with red feathers, laser gates and sweeping lasers instead of spikes)
 - [x] Level progression: beat a level to unlock the next; game over retries the same level
 
 ## Ideas backlog (add yours here!)
-- [ ] Level 3 and beyond (ideas: ice cave, lava, castle, candy land) and a proper level select screen
+- [ ] Level 4 and beyond (ideas: ice cave, lava, candy land, space) and a proper level select screen
 - [ ] Boulder gets bigger (or faster) as it squishes people
-- [ ] Different people: knights with shields, runners, people who throw things
+- [ ] More kinds of enemies: runners, archers who shoot back, people who throw things
 - [ ] Power-ups (rocket boulder, bouncy boulder)
 - [ ] Boss at the end of a level
 - [ ] Better title screen, boulder name, and a high-score list

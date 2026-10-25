@@ -27,13 +27,18 @@ const TUNE = {
   ghostChaseRadius: 108, // ghosts notice you within 6 boulder lengths (the boulder is 18px wide)
   ghostChaseSpeed: 0.6, // slow, so you can always outrun them (boulder top speed is 2.2)
   ghostLeash: 40, // a chasing ghost never strays more than this past the ends of its patrol
+  knightAlertRadius: 70, // knights stop marching and raise their sword when you're this close
+  gateCycle: 240, // laser gates: off, then a 30-frame warning, then on for 90 frames, repeating
+  gateWarnAt: 120,
+  gateOnAt: 150,
+  sweepSpeed: 0.03, // how fast the sweeping lasers bob up and down
 };
 
 // ---------- Level ----------
 // Solid rectangles are [x, y, w, h]. Ground top is y=150.
 const GROUND_Y = 150;
 const LEVELS = [{
-  name: 'SUNNY HILLS', theme: 'day', hint: 'Roll over people. Dodge spikes!',
+  name: 'SUNNY HILLS', theme: 'day', kind: 'person', hint: 'Roll over people. Dodge spikes!',
   width: 2900,
   solids: [
     [0, GROUND_Y, 480, 30], [540, GROUND_Y, 320, 30], [920, GROUND_Y, 380, 30],
@@ -59,7 +64,7 @@ const LEVELS = [{
   checkpoints: [940, 1880, 2380],
   goalX: 2820,
 }, {
-  name: 'THE GRAVEYARD', theme: 'night', chase: true, hint: 'Squish the zombies. Dodge the ghosts!',
+  name: 'THE GRAVEYARD', theme: 'night', kind: 'zombie', hint: 'Squish the zombies. Dodge the ghosts!',
   width: 3200,
   solids: [
     [0, GROUND_Y, 620, 30], [670, GROUND_Y, 520, 30], [1240, GROUND_Y, 700, 30],
@@ -81,23 +86,52 @@ const LEVELS = [{
   ],
   checkpoints: [1260, 2020, 2600],
   goalX: 3120,
+}, {
+  name: 'THE CASTLE', theme: 'castle', kind: 'knight', hint: 'Squish the knights. Dodge the lasers!',
+  width: 3400,
+  solids: [
+    [0, GROUND_Y, 700, 30], [750, GROUND_Y, 750, 30], [1550, GROUND_Y, 850, 30], [2450, GROUND_Y, 950, 30],
+    // stone ledges and steps
+    [420, 112, 100, 8], [1020, 108, 90, 8], [1830, 108, 110, 8], [2200, 132, 30, 18], [2230, 114, 30, 36],
+  ],
+  // lasers: ['gate', x, phase] blinks on and off from ceiling to floor (wait for it to go off, then roll through);
+  //         ['sweep', x, width, phase] is a beam that slowly bobs up and down (go under when high, hop over when low)
+  lasers: [
+    ['gate', 330, 0], ['gate', 600, 120], ['sweep', 880, 70, 0], ['gate', 1180, 60],
+    ['sweep', 1700, 80, 100], ['gate', 1950, 0], ['gate', 2100, 120], ['sweep', 2650, 70, 50], ['gate', 2900, 90],
+  ],
+  // knights: [x, floorY, walkMin, walkMax]
+  people: [
+    [150, GROUND_Y, 100, 280], [460, 112, 430, 510], [480, GROUND_Y, 380, 540], [660, GROUND_Y, 640, 690],
+    [800, GROUND_Y, 770, 850], [1060, 108, 1030, 1100], [1000, GROUND_Y, 960, 1110], [1300, GROUND_Y, 1230, 1420],
+    [1620, GROUND_Y, 1570, 1650], [1880, 108, 1840, 1930], [1800, GROUND_Y, 1790, 1900],
+    [2030, GROUND_Y, 2010, 2060], [2330, GROUND_Y, 2260, 2380], [2530, GROUND_Y, 2470, 2600],
+    [2780, GROUND_Y, 2730, 2840], [3050, GROUND_Y, 2960, 3150],
+  ],
+  checkpoints: [790, 1600, 2490],
+  goalX: 3250,
 }];
 
-// Scenery (tombstones, crosses, dead trees, fences) scattered on solid ground; drawn behind everything.
+// Scenery scattered on solid ground; drawn behind everything.
+const DECOR_KINDS = {
+  night: ['stone', 'cross', 'tree', 'stone', 'fence'],
+  castle: ['barrel', 'brazier', 'crate', 'barrel', 'crate'],
+};
 function genDecor(level) {
   const out = [];
   const onGround = (x) => level.solids.some(([sx, sy, sw]) => sy === GROUND_Y && x > sx + 8 && x < sx + sw - 8);
   for (let x = 70, i = 0; x < level.width - 60; x += 38 + ((i * 37) % 31), i++) {
     if (!onGround(x)) continue;
     if (level.checkpoints.some((c) => Math.abs(c - x) < 24) || Math.abs(level.goalX - x) < 24) continue;
-    out.push([x, ['stone', 'cross', 'tree', 'stone', 'fence'][i % 5]]);
+    out.push([x, DECOR_KINDS[level.theme][i % 5]]);
   }
   return out;
 }
 LEVELS.forEach((l) => {
   l.spikes = l.spikes || [];
   l.ghosts = l.ghosts || [];
-  l.decor = l.theme === 'night' ? genDecor(l) : [];
+  l.lasers = l.lasers || [];
+  l.decor = l.theme === 'day' ? [] : genDecor(l);
 });
 let levelIndex = 0, LEVEL = LEVELS[0];
 function setLevel(i) { levelIndex = i; LEVEL = LEVELS[i]; }
@@ -166,13 +200,24 @@ const sfx = {
   checkpoint: () => beep(700, 0.15, 'triangle', 0.06, 300),
 };
 
+// Confetti colors when you squish someone, by kind of person.
+const SQUISH_COLORS = {
+  person: ['#ffe14d', '#fff', '#ff7ab8'],
+  zombie: ['#9be07a', '#eaeaea', '#c9b8ff'],
+  knight: ['#c8d2e6', '#ffffff', '#e8303a'],
+};
+
 // ---------- Game state ----------
 let state = 'title'; // title | play | win | gameover
 let boulder, people, ghosts, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame = 0, introTimer = 0;
 
-// People never walk onto spikes: trim each walk range at the nearest spike on their floor.
+// People never walk onto spikes or through lasers: trim each walk range at the nearest one on their floor.
 function walkLimits(x, floorY, min, max) {
-  for (const [sx, sw, sy = GROUND_Y] of LEVEL.spikes) {
+  const blocks = [
+    ...LEVEL.spikes,
+    ...LEVEL.lasers.map((l) => (l[0] === 'gate' ? [l[1] - 4, 8] : [l[1], l[2]])),
+  ];
+  for (const [sx, sw, sy = GROUND_Y] of blocks) {
     if (sy !== floorY || sx + sw < min || sx > max) continue;
     if (sx > x) max = Math.min(max, sx - 5); else min = Math.max(min, sx + sw + 5);
   }
@@ -247,6 +292,18 @@ function updateGhosts() {
   }
 }
 
+// Laser gates blink: 'off' (safe), 'warn' (safe, about to fire), 'on' (deadly). `ahead` looks into the future.
+function gateState(phase, ahead = 0) {
+  const t = (frame + ahead + phase) % TUNE.gateCycle;
+  return t >= TUNE.gateOnAt ? 'on' : t >= TUNE.gateWarnAt ? 'warn' : 'off';
+}
+const sweepY = (phase, ahead = 0) => 117 + Math.sin((frame + ahead + phase) * TUNE.sweepSpeed) * 27;
+
+function laserHits(l, cx, cy, r) {
+  if (l[0] === 'gate') return gateState(l[2]) === 'on' && hitsCircleRect(cx, cy, r, l[1] - 2, 14, 5, GROUND_Y - 14);
+  return hitsCircleRect(cx, cy, r, l[1], sweepY(l[3]) - 2, l[2], 4);
+}
+
 function hitsCircleRect(cx, cy, r, rx, ry, rw, rh) {
   const px = clamp(cx, rx, rx + rw), py = clamp(cy, ry, ry + rh);
   const dx = cx - px, dy = cy - py;
@@ -300,6 +357,8 @@ function updateBoulder() {
   for (const [sx, sw, sy = GROUND_Y] of LEVEL.spikes) {
     if (hitsCircleRect(b.x, b.y, r - 1, sx + 1, sy - 5, sw - 2, 5)) { die(); return; }
   }
+  // lasers
+  for (const l of LEVEL.lasers) if (laserHits(l, b.x, b.y, r - 1)) { die(); return; }
   // ghosts
   for (const g of ghosts) {
     const reach = r - 1 + TUNE.ghostRadius;
@@ -314,7 +373,7 @@ function updateBoulder() {
     if (hitsCircleRect(b.x, b.y, r, p.x - 3, p.floorY - 10, 6, 10)) {
       p.alive = false; squished++;
       decals.push({ x: p.x, y: p.floorY, hue: p.hue });
-      spawnBurst(p.x, p.floorY - 5, LEVEL.chase ? ['#9be07a', '#eaeaea', '#c9b8ff'] : ['#ffe14d', '#fff', '#ff7ab8'], 10, 1.4);
+      spawnBurst(p.x, p.floorY - 5, SQUISH_COLORS[LEVEL.kind], 10, 1.4);
       floaters.push({ x: p.x, y: p.floorY - 14, text: '+1', life: 40 });
       sfx.squish();
     }
@@ -331,13 +390,23 @@ function updatePeople() {
   for (const p of people) {
     if (!p.alive) continue;
     const dx = p.x - boulder.x;
-    if (LEVEL.chase) { // zombies shamble toward you instead of running away
+    if (LEVEL.kind === 'zombie') { // zombies shamble toward you instead of running away
       const chase = Math.abs(dx) < TUNE.chaseRadius && Math.abs(boulder.y - p.floorY) < 40;
       if (chase) p.dir = dx >= 0 ? -1 : 1;
       else if (Math.random() < 0.005) p.dir *= -1;
       p.x += p.dir * (chase ? TUNE.chaseSpeed : p.speed);
       if (p.x < p.min) { p.x = p.min; if (!chase) p.dir = 1; }
       if (p.x > p.max) { p.x = p.max; if (!chase) p.dir = -1; }
+      continue;
+    }
+    if (LEVEL.kind === 'knight') { // knights march back and forth, and stand firm with sword up when you get close
+      p.scared = Math.abs(dx) < TUNE.knightAlertRadius && Math.abs(boulder.y - p.floorY) < 40;
+      if (p.scared) p.dir = dx >= 0 ? -1 : 1;
+      else {
+        p.x += p.dir * p.speed;
+        if (p.x < p.min) { p.x = p.min; p.dir = 1; }
+        if (p.x > p.max) { p.x = p.max; p.dir = -1; }
+      }
       continue;
     }
     const near = Math.abs(dx) < TUNE.fleeRadius && Math.abs(boulder.y - p.floorY) < 40;
@@ -397,7 +466,7 @@ function disc(cx, cy, r, c) {
 const hillH = (wx) => 28 + Math.sin(wx * 0.02) * 10 + Math.sin(wx * 0.047) * 5;
 
 function drawBackground() {
-  if (LEVEL.theme === 'night') drawNightBackground(); else drawDayBackground();
+  ({ day: drawDayBackground, night: drawNightBackground, castle: drawCastleBackground })[LEVEL.theme]();
 }
 
 function drawNightBackground() {
@@ -427,6 +496,47 @@ function drawNightBackground() {
   }
 }
 
+// Parallax helper: x positions (on screen) of things repeating every `spacing` world pixels, scrolled at `par` speed.
+function repeating(spacing, par, fn) {
+  const first = Math.floor((camX * par) / spacing) - 1;
+  for (let i = first; i < first + Math.ceil(W / spacing) + 3; i++) fn(i * spacing - camX * par, i);
+}
+
+function drawCastleBackground() {
+  px(0, 0, W, H, '#241f33');
+  // brick wall: every row is shifted a bit, scrolling slowly behind everything else
+  const off = camX * 0.5;
+  for (let row = 0; row < 14; row++) {
+    px(0, row * 12 + 11, W, 1, '#1c1829');
+    const shift = (row % 2) * 16;
+    for (let x = -(((off + shift) % 32) + 32) % 32; x < W; x += 32) px(x, row * 12, 1, 11, '#1c1829');
+  }
+  // arched windows with moonlight
+  repeating(170, 0.45, (sx, i) => {
+    disc(sx + 9, 41, 11, '#4a4660'); px(sx - 2, 41, 22, 38, '#4a4660');
+    disc(sx + 9, 41, 9, '#0f1536'); px(sx, 41, 18, 36, '#0f1536');
+    px(sx + 4, 44 + (i * 7) % 9, 1, 1, '#fff6b0'); px(sx + 12, 52 + (i * 5) % 8, 1, 1, '#cfd8ff'); px(sx + 8, 62, 1, 1, '#cfd8ff');
+    px(sx + 8, 32, 2, 44, '#4a4660'); px(sx, 55, 18, 2, '#4a4660'); // window bars
+  });
+  // pillars with flickering torches
+  repeating(200, 0.7, (sx) => {
+    px(sx, 12, 12, GROUND_Y - 12, '#35304a'); px(sx, 12, 2, GROUND_Y - 12, '#443f5e');
+    px(sx - 2, 12, 16, 5, '#4a4660'); px(sx - 2, GROUND_Y - 6, 16, 6, '#4a4660');
+    const f = (frame >> 2) % 3; // the flame flickers at a constant speed
+    disc(sx + 6, 66, 16, 'rgba(255,170,70,0.08)');
+    px(sx + 4, 70, 4, 3, '#6b4a2b');
+    px(sx + 5, 64 - f, 2, 6 + f, '#ff9a30'); px(sx + 5, 66, 2, 4, '#ffe27a');
+  });
+  // red banners hanging from the ceiling
+  repeating(200, 0.6, (sx) => {
+    const bx = sx + 100;
+    px(bx, 12, 14, 36, '#a3212e'); px(bx, 12, 14, 2, '#d9b44a');
+    px(bx + 5, 24, 4, 7, '#d9b44a'); px(bx + 3, 48, 3, 3, '#a3212e'); px(bx + 8, 48, 3, 3, '#a3212e');
+  });
+  // ceiling
+  px(0, 0, W, 12, '#16121f'); px(0, 12, W, 2, '#2e2942');
+}
+
 function drawDayBackground() {
   px(0, 0, W, H, '#8fd3ff');
   // clouds
@@ -450,6 +560,10 @@ const SOLID_STYLE = {
     ground: ['#3b2f45', '#2c2236', '#2f5a45', '#244a38'],
     stone: ['#5c617c', '#484c66', '#8d93ad', '#6e7390'],
   },
+  castle: {
+    ground: ['#4a4660', '#38344d', '#7a7699', '#5d5a7a'],
+    stone: ['#5b5874', '#46435e', '#8e8bb0', '#6a6790'],
+  },
 };
 
 function drawSolid([x, y, w, h]) {
@@ -468,12 +582,16 @@ function drawSolid([x, y, w, h]) {
 // Pits are the gaps between ground pieces. Fill them with a dark void and a glowing bottom
 // so they're easy to spot against the background.
 function drawPits() {
-  const night = LEVEL.theme === 'night';
+  const theme = LEVEL.theme, night = theme === 'night';
   const ground = LEVEL.solids.filter((s) => s[1] === GROUND_Y).sort((a, b) => a[0] - b[0]);
   for (let i = 0; i < ground.length - 1; i++) {
     const a = ground[i][0] + ground[i][2], w = ground[i + 1][0] - a, sx = Math.round(a - camX);
     if (sx > W || sx + w < 0) continue;
-    px(sx, GROUND_Y, w, H - GROUND_Y, night ? '#04020a' : '#24150d');
+    px(sx, GROUND_Y, w, H - GROUND_Y, { day: '#24150d', night: '#04020a', castle: '#0a0508' }[theme]);
+    if (theme === 'castle') { // a glowing red-hot dungeon pit: not animated, but easy to see
+      for (let k = 0; k < 4; k++) px(sx, H - 16 + k * 4, w, 4, `rgba(255,100,40,${0.12 + k * 0.1})`);
+      for (let k = 0; k < 4; k++) px(sx, GROUND_Y - 12 + k * 3, w, 3, `rgba(255,100,40,${0.04 + k * 0.04})`);
+    }
     if (night) { // spooky green glow, mist and rising wisps (daytime pits are just dirt holes)
       const glow = '110,255,150';
       for (let k = 0; k < 4; k++) px(sx, H - 16 + k * 4, w, 4, `rgba(${glow},${0.1 + k * 0.1})`);
@@ -500,6 +618,16 @@ function drawDecor([x, kind]) {
   } else if (kind === 'tree') {
     px(sx - 1, y - 18, 3, 18, wood); px(sx - 6, y - 14, 6, 2, wood); px(sx - 8, y - 17, 2, 4, wood);
     px(sx + 2, y - 11, 6, 2, wood); px(sx + 6, y - 15, 2, 5, wood); px(sx - 3, y - 21, 2, 4, wood);
+  } else if (kind === 'barrel') {
+    px(sx - 5, y - 11, 10, 11, '#6b4a2b'); px(sx - 5, y - 9, 10, 1, '#3b2a18'); px(sx - 5, y - 4, 10, 1, '#3b2a18'); px(sx - 4, y - 11, 2, 11, '#7d5a36');
+  } else if (kind === 'crate') {
+    px(sx - 6, y - 10, 12, 10, '#5a4429'); px(sx - 6, y - 10, 12, 2, '#6b5235'); px(sx - 6, y - 1, 12, 1, '#3b2a18');
+    for (let k = 0; k < 10; k++) { px(sx - 6 + k + 1, y - 9 + k * 0.8, 1, 1, '#3b2a18'); }
+  } else if (kind === 'brazier') {
+    px(sx - 1, y - 7, 3, 7, '#3b3850'); px(sx - 4, y - 10, 9, 3, '#4a4660');
+    const f = (frame >> 2) % 3;
+    px(sx - 2, y - 14 - f, 4, 4 + f, '#ff9a30'); px(sx - 1, y - 13, 2, 3, '#ffe27a');
+    disc(sx, y - 12, 12, 'rgba(255,160,60,0.1)');
   } else if (kind === 'fence') {
     for (let k = 0; k < 4; k++) { px(sx - 8 + k * 5, y - 8, 2, 8, '#35304a'); px(sx - 8 + k * 5, y - 10, 2, 2, '#35304a'); }
     px(sx - 8, y - 6, 17, 1, '#35304a'); px(sx - 8, y - 3, 17, 1, '#35304a');
@@ -532,6 +660,50 @@ function drawPerson(p) {
 }
 
 const ZOMBIE_CLOTHES = ['#5a4a6e', '#3f6e6a', '#7a5a3a', '#6e3f4f', '#4a5e7a'];
+function drawKnight(p) {
+  const x = Math.round(p.x - camX), y = Math.round(p.floorY), d = p.dir;
+  if (x < -12 || x > W + 12) return;
+  const step = p.scared ? 0 : Math.floor(frame / 12) % 2; // marching; stands still when alert
+  px(x - 2, y - 3, 2, 3 - (step ? 1 : 0), '#5a627a'); px(x, y - 3, 2, 3 - (step ? 0 : 1), '#5a627a');
+  px(x - 3, y - 7, 6, 4, '#9fb1cf'); px(x - 3, y - 5, 6, 1, '#6a728c'); // armor and belt
+  px(d > 0 ? x - 5 : x + 3, y - 8, 2, 5, '#d9b44a'); // gold shield on the back arm
+  px(x - 2, y - 11, 4, 4, '#b8c2d4'); px(x - 2, y - 12, 4, 1, '#d6deec'); // helmet
+  px(x - 1 + (d > 0 ? 1 : -1), y - 10, 2, 1, '#2a2f45'); // visor slit looks the way it's walking
+  // the red feather on top, swept back
+  px(x, y - 14, 1, 2, '#e8303a'); px(x - d, y - 15, 1, 2, '#e8303a'); px(x - 2 * d, y - 15 + (step ? 1 : 0), 1, 1, '#ff6670');
+  // sword: carried low while marching, raised when you get close
+  if (p.scared) { px(x + d * 3 + (d > 0 ? 0 : -1), y - 15, 1, 8, '#e8eef8'); px(x + d * 3 - 1 + (d > 0 ? 0 : 1), y - 7, 3, 1, '#d9b44a'); }
+  else { px(x + d * 3 + (d > 0 ? 0 : -1), y - 6, 1, 5, '#e8eef8'); }
+}
+
+const DRAW_PERSON = { person: drawPerson, zombie: drawZombie, knight: drawKnight };
+
+// Lasers. Gates are off (green lights), warn (yellow lights, dotted beam), or on (red beam, deadly).
+function drawLaser(l) {
+  if (l[0] === 'gate') {
+    const sx = Math.round(l[1] - camX), st = gateState(l[2]);
+    if (sx < -10 || sx > W + 10) return;
+    const light = { off: '#4fe36b', warn: '#ffd23f', on: '#ff3b4f' }[st];
+    if (st === 'on') {
+      const flick = frame % 4 < 2 ? 0.28 : 0.2;
+      px(sx - 4, 20, 9, GROUND_Y - 26, `rgba(255,60,80,${flick})`);
+      px(sx - 1, 20, 3, GROUND_Y - 26, '#ff3b4f'); px(sx, 20, 1, GROUND_Y - 26, '#ffd6dc');
+    } else if (st === 'warn') {
+      for (let y = 20; y < GROUND_Y - 6; y += 8) px(sx, y, 1, 3, '#ffd23f'); // dotted line says "about to fire"
+    }
+    px(sx - 5, 14, 10, 6, '#3a3550'); px(sx - 1, 17, 2, 2, light);
+    px(sx - 5, GROUND_Y - 6, 10, 6, '#3a3550'); px(sx - 1, GROUND_Y - 5, 2, 2, light);
+    return;
+  }
+  const [, x, w, phase] = l, sx = Math.round(x - camX), y = Math.round(sweepY(phase));
+  if (sx > W + 10 || sx + w < -10) return;
+  px(sx - 1, 84, 2, GROUND_Y - 84, '#3a3550'); px(sx + w - 1, 84, 2, GROUND_Y - 84, '#3a3550'); // rails
+  px(sx + 2, y - 3, w - 4, 7, `rgba(255,60,80,${frame % 4 < 2 ? 0.28 : 0.2})`);
+  px(sx + 2, y - 1, w - 4, 3, '#ff3b4f'); px(sx + 2, y, w - 4, 1, '#ffd6dc');
+  px(sx - 4, y - 4, 7, 9, '#3a3550'); px(sx + w - 3, y - 4, 7, 9, '#3a3550'); // emitters riding the rails
+  px(sx - 1, y - 1, 2, 2, '#ff3b4f'); px(sx + w - 1, y - 1, 2, 2, '#ff3b4f');
+}
+
 function drawZombie(p) {
   const x = Math.round(p.x - camX), y = Math.round(p.floorY), d = p.dir;
   if (x < -10 || x > W + 10) return;
@@ -566,7 +738,8 @@ function drawGhost(g) {
 function drawDecal(d) {
   const x = Math.round(d.x - camX);
   if (x < -10 || x > W + 10) return;
-  if (LEVEL.chase) { px(x - 5, d.y - 1, 10, 1, '#86c97e'); px(x - 2, d.y - 2, 4, 1, '#9be07a'); px(x + 3, d.y - 2, 2, 1, '#eaeaea'); return; }
+  if (LEVEL.kind === 'knight') { px(x - 5, d.y - 1, 10, 1, '#9fb1cf'); px(x - 1, d.y - 2, 3, 1, '#c8d2e6'); px(x + 3, d.y - 2, 2, 1, '#e8303a'); return; }
+  if (LEVEL.kind === 'zombie') { px(x - 5, d.y - 1, 10, 1, '#86c97e'); px(x - 2, d.y - 2, 4, 1, '#9be07a'); px(x + 3, d.y - 2, 2, 1, '#eaeaea'); return; }
   px(x - 4, d.y - 1, 8, 1, SHIRTS[d.hue]); px(x - 2, d.y - 2, 4, 1, '#ffd8b0');
 }
 
@@ -612,8 +785,9 @@ function draw() {
   LEVEL.checkpoints.forEach((cp) => drawFlag(cp, spawnX >= cp ? '#4fe36b' : '#999'));
   drawFlag(LEVEL.goalX, '#ffd23f');
   LEVEL.spikes.forEach(drawSpikes);
+  LEVEL.lasers.forEach(drawLaser);
   decals.forEach(drawDecal);
-  people.forEach((p) => p.alive && (LEVEL.chase ? drawZombie(p) : drawPerson(p)));
+  people.forEach((p) => p.alive && DRAW_PERSON[LEVEL.kind](p));
   drawBoulder();
   ghosts.forEach(drawGhost);
   for (const q of particles) px(q.x - camX, q.y, q.size, q.size, q.color);
@@ -655,4 +829,4 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // Test hook for automated checks (harmless in the browser).
-window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, input, update };
+window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, gateState, sweepY, laserHits, input, update };
