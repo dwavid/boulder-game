@@ -32,6 +32,12 @@ const TUNE = {
   gateWarnAt: 120,
   gateOnAt: 150,
   sweepSpeed: 0.03, // how fast the sweeping lasers bob up and down
+  bossHeight: 64, // head top is this far above the ground: too high to reach with a jump from the ground
+  bossWindup: 50, // frames the sword is raised before it swings (the warning)
+  bossSwing: 16, // frames the swing lasts; the low sweep at the end is what hurts
+  bossReach: 50, // how far in front of him the sword reaches (on the ground)
+  bossHurt: 100, // frames he's dazed (and can't attack) after you land on his head
+  bossSpeed: 0.45, // walking speed; he gets 0.1 faster after each hit
 };
 
 // ---------- Level ----------
@@ -93,6 +99,8 @@ const LEVELS = [{
     [0, GROUND_Y, 700, 30], [750, GROUND_Y, 750, 30], [1550, GROUND_Y, 850, 30], [2450, GROUND_Y, 950, 30],
     // stone ledges and steps
     [420, 112, 100, 8], [1020, 108, 90, 8], [1830, 108, 110, 8], [2200, 132, 30, 18], [2230, 114, 30, 36],
+    // boss arena: a ledge on each side (the boss's head is too high to reach from the ground) and a wall at the end
+    [3124, 112, 64, 8], [3320, 112, 64, 8], [3392, 0, 8, GROUND_Y],
   ],
   // lasers: ['gate', x, phase] blinks on and off from ceiling to floor (wait for it to go off, then roll through);
   //         ['sweep', x, width, phase] is a beam that slowly bobs up and down (go under when high, hop over when low)
@@ -106,10 +114,12 @@ const LEVELS = [{
     [800, GROUND_Y, 770, 850], [1060, 108, 1030, 1100], [1000, GROUND_Y, 960, 1110], [1300, GROUND_Y, 1230, 1420],
     [1620, GROUND_Y, 1570, 1650], [1880, 108, 1840, 1930], [1800, GROUND_Y, 1790, 1900],
     [2030, GROUND_Y, 2010, 2060], [2330, GROUND_Y, 2260, 2380], [2530, GROUND_Y, 2470, 2600],
-    [2780, GROUND_Y, 2730, 2840], [3050, GROUND_Y, 2960, 3150],
+    [2780, GROUND_Y, 2730, 2840], [2990, GROUND_Y, 2950, 3040],
   ],
-  checkpoints: [790, 1600, 2490],
-  goalX: 3250,
+  checkpoints: [790, 1600, 2490, 3010],
+  // The Giant Knight. The fight starts when you cross arenaLeft; the camera then locks onto the arena.
+  // zoneMin/zoneMax is how far he can walk (between the two ledges). No goalX: beating the boss wins the level.
+  boss: { name: 'THE GIANT KNIGHT', x: 3254, hp: 3, arenaLeft: 3092, camX: 3080, zoneMin: 3202, zoneMax: 3306 },
 }];
 
 // Scenery scattered on solid ground; drawn behind everything.
@@ -123,6 +133,7 @@ function genDecor(level) {
   for (let x = 70, i = 0; x < level.width - 60; x += 38 + ((i * 37) % 31), i++) {
     if (!onGround(x)) continue;
     if (level.checkpoints.some((c) => Math.abs(c - x) < 24) || Math.abs(level.goalX - x) < 24) continue;
+    if (level.boss && x > level.boss.arenaLeft - 40) continue; // keep the boss arena clear
     out.push([x, DECOR_KINDS[level.theme][i % 5]]);
   }
   return out;
@@ -234,7 +245,7 @@ const SQUISH_COLORS = {
 
 // ---------- Game state ----------
 let state = 'title'; // title | play | win | gameover
-let boulder, people, ghosts, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame = 0, introTimer = 0;
+let boulder, people, ghosts, boss, bossIntro = 0, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame = 0, introTimer = 0;
 
 // People never walk onto spikes or through lasers: trim each walk range at the nearest one on their floor.
 function walkLimits(x, floorY, min, max) {
@@ -260,9 +271,13 @@ function resetRun() {
   });
   ghosts = LEVEL.ghosts.map(([cx, cy, range, phase]) => ({ cx, cy, range, phase, x: cx, y: cy, face: 1, chase: false }));
   decals = [];
+  boss = LEVEL.boss ? { hp: LEVEL.boss.hp, dead: false } : null;
   respawn();
 }
 function respawn() {
+  if (boss) Object.assign(boss, { // the fight starts over when you respawn, but damage you've done stays
+    x: LEVEL.boss.x, dir: -1, state: 'idle', timer: 0, invul: 0, active: false, wall: 0,
+  });
   boulder = { x: spawnX, y: GROUND_Y - 30, vx: 0, vy: 0, rot: 0, onGround: false, coyote: 0, jumpBuf: 0, face: 1, age: 0 };
   for (const g of ghosts) { [g.x, g.y] = ghostHome(g); g.chase = false; } // ghosts go back to their patrol
   particles = []; floaters = []; deadTimer = 0;
@@ -335,8 +350,10 @@ function hitsCircleRect(cx, cy, r, rx, ry, rw, rh) {
   return dx * dx + dy * dy < r * r;
 }
 
+const BOSS_WALL = [3076, 0, 12, GROUND_Y]; // drops behind you when the boss fight starts
+
 function updateBoulder() {
-  const b = boulder, r = TUNE.radius;
+  const b = boulder, r = TUNE.radius, prevBottom = b.y + r;
   const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
   const acc = b.onGround ? TUNE.accel : TUNE.airAccel;
   if (dir) { b.vx += dir * acc; b.face = dir; }
@@ -358,7 +375,8 @@ function updateBoulder() {
   b.x = Math.max(r, b.x);
 
   b.onGround = false;
-  for (const [sx, sy, sw, sh] of LEVEL.solids) {
+  const solids = boss && boss.active ? LEVEL.solids.concat([BOSS_WALL]) : LEVEL.solids;
+  for (const [sx, sy, sw, sh] of solids) {
     const cx = clamp(b.x, sx, sx + sw), cy = clamp(b.y, sy, sy + sh);
     const dx = b.x - cx, dy = b.y - cy, d2 = dx * dx + dy * dy;
     if (d2 >= r * r) continue;
@@ -377,6 +395,16 @@ function updateBoulder() {
   b.coyote = b.onGround ? 6 : b.coyote - 1;
   b.age++;
   b.rot += b.vx / r;
+
+  // landing on the boss's head from above (the only way to hurt him); you bounce off either way
+  if (boss && boss.active && !boss.dead && b.vy > 0) {
+    const headTop = GROUND_Y - TUNE.bossHeight;
+    if (prevBottom <= headTop + 3 && b.y + r >= headTop && Math.abs(b.x - boss.x) < 22) {
+      b.y = headTop - r - 1; b.vy = -TUNE.jump * 0.85; b.onGround = false; b.coyote = 0;
+      if (boss.invul <= 0) hurtBoss();
+      else beep(300, 0.1, 'square', 0.04, 200);
+    }
+  }
 
   // spikes
   for (const [sx, sw, sy = GROUND_Y] of LEVEL.spikes) {
@@ -408,7 +436,7 @@ function updateBoulder() {
   for (const cp of LEVEL.checkpoints) {
     if (b.x > cp && spawnX < cp) { spawnX = cp; sfx.checkpoint(); floaters.push({ x: cp, y: GROUND_Y - 30, text: 'CHECKPOINT', life: 60 }); }
   }
-  if (b.x > LEVEL.goalX) { state = 'win'; sfx.win(); }
+  if (LEVEL.goalX && b.x > LEVEL.goalX) { state = 'win'; sfx.win(); }
 }
 
 function updatePeople() {
@@ -445,6 +473,59 @@ function updatePeople() {
   }
 }
 
+// ----- The Giant Knight -----
+// idle -> (you enter the arena) roar -> walk <-> windup -> swing -> recover; a head hit puts him in 'hurt'.
+function hurtBoss() {
+  boss.hp--;
+  boss.invul = TUNE.bossHurt; boss.state = 'hurt'; boss.timer = TUNE.bossHurt;
+  spawnBurst(boss.x, GROUND_Y - TUNE.bossHeight, ['#c8d2e6', '#ffffff', '#e8303a', '#ffd23f'], 22, 2.2);
+  floaters.push({ x: boss.x, y: GROUND_Y - TUNE.bossHeight - 14, text: boss.hp > 0 ? 'OUCH!' : 'DEFEATED!', life: 60 });
+  beep(160, 0.35, 'sawtooth', 0.08, -90);
+  if (boss.hp <= 0) {
+    boss.dead = true; boss.timer = 150;
+    spawnBurst(boss.x, GROUND_Y - 30, ['#c8d2e6', '#9fb1cf', '#e8303a', '#ffd23f', '#fff'], 60, 3);
+    sfx.win();
+  }
+}
+
+function updateBoss() {
+  if (!boss) return;
+  const b = boulder, cfg = LEVEL.boss;
+  if (boss.dead) { // celebrate for a moment, then the level is won
+    if (--boss.timer === 0) { state = 'win'; sfx.win(); }
+    return;
+  }
+  if (!boss.active) {
+    if (b.x > cfg.arenaLeft) { boss.active = true; boss.state = 'roar'; boss.timer = 70; bossIntro = 120; beep(110, 0.6, 'sawtooth', 0.08, -40); }
+    return;
+  }
+  boss.wall = Math.min(1, boss.wall + 1 / 25); // the portcullis drops behind you
+  if (boss.invul > 0) boss.invul--;
+  boss.timer--;
+  const dx = b.x - boss.x, reach = TUNE.bossReach;
+  const nearGround = b.y + TUNE.radius > 124; // sword only reaches low: ledges and jumps over it are safe
+  if (boss.state === 'roar') { if (boss.timer <= 0) boss.state = 'walk'; }
+  else if (boss.state === 'hurt') { if (boss.timer <= 0) boss.state = 'walk'; }
+  else if (boss.state === 'walk') {
+    boss.dir = dx >= 0 ? 1 : -1;
+    const speed = TUNE.bossSpeed + (cfg.hp - boss.hp) * 0.1;
+    const tx = clamp(b.x, cfg.zoneMin, cfg.zoneMax);
+    if (Math.abs(tx - boss.x) > speed) boss.x += Math.sign(tx - boss.x) * speed;
+    if (nearGround && Math.abs(dx) < reach + 12) { boss.state = 'windup'; boss.timer = TUNE.bossWindup; }
+  } else if (boss.state === 'windup') {
+    if (boss.timer <= 0) { boss.state = 'swing'; boss.timer = TUNE.bossSwing; beep(220, 0.2, 'square', 0.06, -160); }
+  } else if (boss.state === 'swing') {
+    const progress = 1 - boss.timer / TUNE.bossSwing;
+    if (progress >= 0.55 && deadTimer === 0) { // the low sweep at the end of the swing
+      const x0 = boss.dir > 0 ? boss.x + 8 : boss.x - 8 - reach;
+      if (hitsCircleRect(b.x, b.y, TUNE.radius - 1, x0, 118, reach, GROUND_Y - 118)) die();
+    }
+    if (boss.timer <= 0) { boss.state = 'recover'; boss.timer = 40; }
+  } else if (boss.state === 'recover') {
+    if (boss.timer <= 0) boss.state = 'walk';
+  }
+}
+
 function updateFx() {
   for (const q of particles) { q.x += q.vx; q.y += q.vy; q.vy += 0.1; q.life--; }
   particles = particles.filter((q) => q.life > 0);
@@ -465,6 +546,7 @@ function update() {
     } else {
       updateBoulder();
       updatePeople();
+      updateBoss();
     }
     if (introTimer > 0) introTimer--;
   } else if (input.jumpPressed) {
@@ -474,7 +556,8 @@ function update() {
   }
   updateGhosts();
   updateFx();
-  const target = clamp(boulder.x - 110, 0, LEVEL.width - W);
+  const target = boss && boss.active ? LEVEL.boss.camX : clamp(boulder.x - 110, 0, LEVEL.width - W);
+  if (bossIntro > 0 && state === 'play') bossIntro--;
   camX += (target - camX) * 0.15;
 }
 
@@ -730,6 +813,78 @@ function drawLaser(l) {
   px(sx - 1, y - 1, 2, 2, '#ff3b4f'); px(sx + w - 1, y - 1, 2, 2, '#ff3b4f');
 }
 
+// A sword drawn as a line of pixels from the hand: angle 0 = straight ahead, -90 = straight up, 90 = straight down.
+function drawSword(hx, hy, dir, deg, len, glow) {
+  const a = (deg * Math.PI) / 180;
+  for (let t = 0; t <= len; t++) {
+    const x = hx + dir * Math.cos(a) * t, y = hy + Math.sin(a) * t;
+    if (glow) px(x - 2, y - 2, 5, 5, 'rgba(255,90,90,0.28)');
+    px(x - 1, y - 1, 3, 3, t < 7 ? '#d9b44a' : '#e8eef8');
+  }
+}
+
+function drawBoss() {
+  if (!boss || boss.dead) return;
+  // the portcullis that drops behind you
+  if (boss.active && boss.wall > 0) {
+    const bottom = Math.round(GROUND_Y * boss.wall), x = Math.round(BOSS_WALL[0] - camX);
+    px(x, 0, 12, bottom, '#2a2738');
+    for (let k = 0; k < 12; k += 4) px(x + k, 0, 2, bottom, '#6a728c');
+    for (let y = 10; y < bottom; y += 18) px(x, y, 12, 2, '#6a728c');
+  }
+  const shake = boss.state === 'roar' && frame % 4 < 2 ? 1 : 0;
+  const bx = Math.round(boss.x - camX) + shake, y = GROUND_Y, d = boss.dir;
+  if (bx < -40 || bx > W + 40) return;
+  if (boss.invul > 0 && (frame >> 2) % 2) return; // blinks while dazed
+  const walking = boss.state === 'walk' && Math.floor(frame / 12) % 2;
+  // legs and boots
+  px(bx - 11, y - 16, 9, 16 - (walking ? 3 : 0), '#5a627a'); px(bx + 2, y - 16, 9, 16 - (walking ? 0 : 3), '#5a627a');
+  px(bx - 13, y - 5 - (walking ? 3 : 0), 12, 5, '#3d4357'); px(bx + 1, y - 5 - (walking ? 0 : 3), 12, 5, '#3d4357');
+  // gold shield on the back arm
+  px(d > 0 ? bx - 23 : bx + 13, y - 40, 10, 18, '#d9b44a'); px(d > 0 ? bx - 20 : bx + 16, y - 35, 4, 8, '#e8303a');
+  // armored body, belt and shoulders
+  px(bx - 14, y - 42, 28, 27, '#9fb1cf'); px(bx - 14, y - 42, 28, 3, '#c8d2e6');
+  px(bx - 8, y - 36, 16, 12, '#b8c2d4'); px(bx - 14, y - 24, 28, 4, '#6a728c'); px(bx - 2, y - 25, 4, 6, '#d9b44a');
+  px(bx - 19, y - 45, 9, 9, '#c8d2e6'); px(bx + 10, y - 45, 9, 9, '#c8d2e6');
+  // helmet: the top of it (y - bossHeight) is where you have to land
+  px(bx - 9, y - 64, 18, 22, '#b8c2d4'); px(bx - 9, y - 64, 18, 3, '#e8eef8'); px(bx - 9, y - 43, 18, 2, '#8a96ae');
+  px(bx - 7 + (d > 0 ? 2 : 0), y - 56, 12, 4, '#2a2f45');
+  px(bx - 4 + d * 3, y - 55, 2, 2, '#ff5a5a'); px(bx + 2 + d * 3, y - 55, 2, 2, '#ff5a5a'); // glowing red eyes
+  // the big red feather, swept back
+  px(bx - 1, y - 72, 3, 8, '#e8303a'); px(bx - 1 - d * 4, y - 76, 3, 7, '#e8303a'); px(bx - 1 - d * 8, y - 75, 3, 6, '#ff6670'); px(bx - 1 - d * 11, y - 71, 2, 5, '#e8303a');
+  // sword: hangs low while walking, rises for the windup (warning), sweeps low on the swing
+  const hx = bx + d * 15, hy = y - 46;
+  let deg = 70, glow = false;
+  if (boss.state === 'windup') { deg = 70 - 150 * (1 - boss.timer / TUNE.bossWindup); glow = frame % 6 < 3; }
+  else if (boss.state === 'swing') { deg = -80 + 160 * (1 - boss.timer / TUNE.bossSwing); glow = true; }
+  else if (boss.state === 'recover') deg = 82;
+  else if (boss.state === 'hurt') deg = 85;
+  drawSword(hx, hy, d, deg, 48, glow);
+  px(hx - 3, hy - 3, 7, 7, '#c8d2e6'); // fist
+  if (boss.state === 'windup') text('!', bx, y - 84, '#ff5a5a', 'center', 14);
+  if (boss.state === 'hurt') for (let k = 0; k < 3; k++) { // dazed stars circling his head
+    const a = frame * 0.15 + k * 2.1;
+    px(bx + Math.cos(a) * 14, y - 70 + Math.sin(a) * 4, 3, 3, '#ffd23f');
+  }
+  // bouncing arrow over his head: "land here!"
+  if (boss.active && boss.invul <= 0 && ['walk', 'recover', 'swing'].includes(boss.state)) {
+    const bob = Math.round(Math.sin(frame * 0.15) * 3);
+    for (let r = 0; r < 4; r++) px(bx - 3 + r, y - 92 + r + bob, 7 - 2 * r, 1, '#ffd23f');
+  }
+}
+
+function drawBossHud() {
+  if (!boss || !boss.active || boss.dead) return;
+  const cfg = LEVEL.boss;
+  text(cfg.name, W / 2, 30, '#fff', 'center', 7);
+  px(W / 2 - 41, 33, 82, 8, '#2a1018');
+  for (let i = 0; i < cfg.hp; i++) px(W / 2 - 40 + i * 27, 34, 26, 6, i < boss.hp ? '#e8303a' : '#4a2a33');
+  if (bossIntro > 0) {
+    text('BOSS FIGHT!', W / 2, 56, '#ff5a5a', 'center', 12);
+    text('Jump off a ledge and land on his head!', W / 2, 67, '#fff', 'center', 7);
+  }
+}
+
 function drawZombie(p) {
   const x = Math.round(p.x - camX), y = Math.round(p.floorY), d = p.dir;
   if (x < -10 || x > W + 10) return;
@@ -809,11 +964,13 @@ function draw() {
   LEVEL.solids.forEach(drawSolid);
   LEVEL.decor.forEach(drawDecor);
   LEVEL.checkpoints.forEach((cp) => drawFlag(cp, spawnX >= cp ? '#4fe36b' : '#999'));
-  drawFlag(LEVEL.goalX, '#ffd23f');
+  if (LEVEL.goalX) drawFlag(LEVEL.goalX, '#ffd23f');
+  if (LEVEL.boss) px(LEVEL.boss.arenaLeft - 12, GROUND_Y - 1, 310, 1, '#a3212e'); // red carpet into the arena
   LEVEL.spikes.forEach(drawSpikes);
   LEVEL.lasers.forEach(drawLaser);
   decals.forEach(drawDecal);
   people.forEach((p) => p.alive && DRAW_PERSON[LEVEL.kind](p));
+  drawBoss();
   drawBoulder();
   ghosts.forEach(drawGhost);
   for (const q of particles) px(q.x - camX, q.y, q.size, q.size, q.color);
@@ -822,6 +979,7 @@ function draw() {
   // HUD
   text('SQUISHED ' + squished + '/' + LEVEL.people.length, 6, 12);
   text('LEVEL ' + (levelIndex + 1), W / 2, 12, '#ffd23f', 'center');
+  drawBossHud();
   text('LIVES ' + Math.max(0, lives), W - 6, 12, '#ffb3b3', 'right');
 
   const lastLevel = levelIndex === LEVELS.length - 1;
@@ -867,4 +1025,4 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // Test hook for automated checks (harmless in the browser).
-window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, get menuOpen() { return menuOpen; }, gateState, sweepY, laserHits, input, update };
+window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, get boss() { return boss; }, get menuOpen() { return menuOpen; }, gateState, sweepY, laserHits, input, update };

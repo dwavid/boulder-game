@@ -15,6 +15,7 @@
 - [x] Keyboard and touch controls (phone friendly)
 - [x] Level 2: the Graveyard (night, zombies that shamble toward you, slow floating ghosts instead of spikes)
 - [x] Level 3: the Castle (brick halls with torches and banners, knights with red feathers, laser gates and sweeping lasers instead of spikes)
+- [x] Boss: the Giant Knight at the end of the Castle (land on his head from the ledges; his sword only reaches the ground)
 - [x] Level progression: beat a level to unlock the next; game over retries the same level
 
 ## Ideas backlog (add yours here!)
@@ -22,7 +23,7 @@
 - [ ] Boulder gets bigger (or faster) as it squishes people
 - [ ] More kinds of enemies: runners, archers who shoot back, people who throw things
 - [ ] Power-ups (rocket boulder, bouncy boulder)
-- [ ] Boss at the end of a level
+- [ ] Bosses for levels 1 and 2 (ideas: a giant ghost, a zombie king)
 - [ ] Better title screen, boulder name, and a high-score list
 - [ ] Music
 - [ ] Hand-drawn pixel sprites (swap the code-drawn art for spritesheets)
