@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Boulder Game</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #14121f; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
+  body, button { -webkit-user-select: none; user-select: none; touch-action: none; }
+  canvas {
+    width: min(100vw, 177.78vh);
+    aspect-ratio: 16 / 9;
+    image-rendering: pixelated;
+    background: #8fd3ff;
+  }
+  #controls {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    display: none; justify-content: space-between; align-items: flex-end;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    pointer-events: none;
+  }
+  @media (pointer: coarse) { #controls { display: flex; } }
+  #controls .group { display: flex; gap: 12px; }
+  #controls button {
+    pointer-events: auto;
+    width: 76px; height: 76px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,.7); background: rgba(255,255,255,.22);
+    color: #fff; font: bold 28px monospace;
+  }
+  #controls button.on { background: rgba(255,255,255,.5); }
+</style>
+</head>
+<body>
+<canvas id="game" width="320" height="180"></canvas>
+<div id="controls">
+  <div class="group">
+    <button data-key="left">◀</button>
+    <button data-key="right">▶</button>
+  </div>
+  <button data-key="jump">▲</button>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
