@@ -163,6 +163,19 @@ function setLevel(i) { levelIndex = i; LEVEL = LEVELS[i]; }
   if (n >= 1 && n <= LEVELS.length) setLevel(n - 1);
 }
 
+// ---------- No zooming ----------
+// iPad/iPhone Safari ignore user-scalable=no, so block pinch-zoom and double-tap-zoom ourselves.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, (e) => e.preventDefault());
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive: false });
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => { // two quick taps = double-tap zoom
+  const now = Date.now();
+  if (now - lastTouchEnd < 350) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+document.addEventListener('dblclick', (e) => e.preventDefault());
+addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false }); // trackpad pinch on a laptop
+
 // ---------- Input ----------
 const input = { left: false, right: false, jump: false, jumpPressed: false, down: false, downPressed: false };
 const keyMap = {

@@ -25,6 +25,7 @@ A browser side-scroller: you're a boulder, squish people, avoid spikes. Plain HT
 - People never walk onto spikes or through lasers (`walkLimits` trims their walk range), so no extra work is needed when adding them.
 - Level 3 arena is the last piece of the level (width 3400); a level with a boss has no `goalX`: its ending script calls `state = 'win'`.
 - Pits are drawn automatically as the gaps between ground pieces (`drawPits`: dark void, glowing bottom, mist). Keep pits <= 60px wide.
+- Zooming is blocked on purpose (iPad Safari ignores `user-scalable=no`): the `// No zooming` block in `game.js` cancels pinch gestures, double-tap and trackpad pinch, and the CSS sets `touch-action: none`. Keep new touch handling compatible with that (use pointer events; don't rely on `click` or double-tap).
 - Kid-friendly: squishing is cartoony (stars and confetti, no gore).
 
 ## Running and testing
