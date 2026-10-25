@@ -896,9 +896,11 @@ function drawSolid([x, y, w, h, type]) {
 
 // Pits are the gaps between ground pieces. Fill them with a dark void and a glowing bottom
 // so they're easy to spot against the background.
+let pitGround = null, pitGroundFor = null; // sorted ground pieces, cached per level (not rebuilt every frame)
 function drawPits() {
   const theme = LEVEL.theme, night = theme === 'night';
-  const ground = LEVEL.solids.filter((s) => s[1] === GROUND_Y).sort((a, b) => a[0] - b[0]);
+  if (pitGroundFor !== LEVEL) { pitGround = LEVEL.solids.filter((s) => s[1] === GROUND_Y).sort((a, b) => a[0] - b[0]); pitGroundFor = LEVEL; }
+  const ground = pitGround;
   for (let i = 0; i < ground.length - 1; i++) {
     const a = ground[i][0] + ground[i][2], w = ground[i + 1][0] - a, sx = Math.round(a - camX);
     if (sx > W || sx + w < 0) continue;
@@ -1325,11 +1327,18 @@ function draw() {
 // ---------- Main loop (fixed 60 updates/sec) ----------
 layout();
 frame = 0;
+const STEP = 1000 / 60;
 let last = performance.now(), acc = 0;
 function loop(now) {
-  acc += Math.min(100, now - last); last = now;
-  while (acc >= 1000 / 60) { update(); acc -= 1000 / 60; }
-  draw();
+  let dt = Math.min(100, now - last); last = now;
+  // rAF times jitter by a millisecond or two, and 90/120/144Hz screens don't divide evenly into 60.
+  // Snap to the nearest whole fraction of a step (1, 1/2, 1/3, 1/4) when close, so every frame runs the
+  // same number of updates instead of an uneven 0, 2, 1, 1 that looks like stutter.
+  for (let k = 1; k <= 4; k++) if (Math.abs(dt - STEP / k) < STEP / k * 0.15) { dt = STEP / k; break; }
+  acc += dt;
+  let ran = false;
+  while (acc >= STEP - 0.001) { update(); acc -= STEP; ran = true; }
+  if (ran) draw(); // nothing changed otherwise, so skip the redraw (halves the work on 120Hz+ screens)
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
