@@ -203,6 +203,7 @@ document.querySelectorAll('#controls button').forEach((b) => {
   const n = b.dataset.key;
   const down = (e) => { e.preventDefault(); b.classList.add('on'); setInput(n, true); audioInit(); };
   const up = (e) => { e.preventDefault(); b.classList.remove('on'); setInput(n, false); };
+  b.addEventListener('contextmenu', (e) => e.preventDefault());
   b.addEventListener('pointerdown', down);
   b.addEventListener('pointerup', up);
   b.addEventListener('pointercancel', up);

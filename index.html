@@ -23,26 +23,40 @@
     pointer-events: none;
   }
   @media (pointer: coarse) { #controls { display: flex; } }
-  #controls .group { display: flex; gap: 12px; }
+  #controls .group { display: flex; gap: 20px; }
   #controls button {
-    pointer-events: auto;
-    width: 76px; height: 76px; border-radius: 50%;
+    pointer-events: auto; position: relative; padding: 0;
+    width: 92px; height: 92px; border-radius: 50%;
     border: 3px solid rgba(255,255,255,.7); background: rgba(255,255,255,.22);
-    color: #fff; font: bold 28px monospace;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
   }
+  /* invisible extra hit area so a thumb that lands near the edge still counts */
+  #controls button::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
+  /* the arrows are SVG shapes, not text, so iOS has nothing to select or magnify */
+  #controls svg { width: 40%; height: 40%; fill: #fff; pointer-events: none; }
   #controls button.on { background: rgba(255,255,255,.5); }
+  #hint { display: none; color: #cfc8ff; font: 14px sans-serif; text-align: center; margin-top: 14px; pointer-events: none; }
+  /* portrait phone: the 16:9 game is a thin strip at the top, so give the empty space below to bigger buttons */
+  @media (pointer: coarse) and (orientation: portrait) {
+    #hint { display: block; }
+    #controls { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+    #controls button { width: min(108px, 20vw); height: min(108px, 20vw); }
+    #controls .group { gap: 10px; }
+  }
 </style>
 </head>
 <body>
 <canvas id="game" width="320" height="180"></canvas>
+<div id="hint">Turn your phone sideways for a bigger game</div>
 <div id="controls">
   <div class="group">
-    <button data-key="left">◀</button>
-    <button data-key="right">▶</button>
+    <button data-key="left" aria-label="left"><svg viewBox="0 0 100 100"><path d="M80 8 L80 92 L12 50 Z"/></svg></button>
+    <button data-key="right" aria-label="right"><svg viewBox="0 0 100 100"><path d="M20 8 L20 92 L88 50 Z"/></svg></button>
   </div>
   <div class="group">
-    <button data-key="down">▼</button>
-    <button data-key="jump">▲</button>
+    <button data-key="down" aria-label="down"><svg viewBox="0 0 100 100"><path d="M8 20 L92 20 L50 88 Z"/></svg></button>
+    <button data-key="jump" aria-label="jump"><svg viewBox="0 0 100 100"><path d="M8 80 L92 80 L50 12 Z"/></svg></button>
   </div>
 </div>
 <script src="game.js"></script>
