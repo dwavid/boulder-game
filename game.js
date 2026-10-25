@@ -24,6 +24,9 @@ const TUNE = {
   chaseSpeed: 0.4,
   ghostRadius: 5,
   ghostSpeed: 0.018, // how fast ghosts drift back and forth (smaller = slower)
+  ghostChaseRadius: 108, // ghosts notice you within 6 boulder lengths (the boulder is 18px wide)
+  ghostChaseSpeed: 0.6, // slow, so you can always outrun them (boulder top speed is 2.2)
+  ghostLeash: 40, // a chasing ghost never strays more than this past the ends of its patrol
 };
 
 // ---------- Level ----------
@@ -62,20 +65,20 @@ const LEVELS = [{
     [0, GROUND_Y, 620, 30], [670, GROUND_Y, 520, 30], [1240, GROUND_Y, 700, 30],
     [1990, GROUND_Y, 520, 30], [2560, GROUND_Y, 640, 30],
     // crypt roofs and tombstone steps
-    [800, 112, 90, 8], [1380, 108, 140, 8], [1700, 132, 30, 18], [1730, 114, 30, 36], [2200, 108, 80, 8],
+    [880, 112, 90, 8], [1500, 108, 140, 8], [1700, 132, 30, 18], [1730, 114, 30, 36], [2300, 108, 80, 8],
   ],
   // ghosts float back and forth slowly: [centerX, centerY, patrolRange, phase]
   ghosts: [
-    [360, 136, 36, 0], [760, 136, 30, 2], [1000, 136, 40, 4], [1360, 136, 40, 1],
-    [1450, 94, 25, 3], [1600, 136, 36, 5], [2100, 136, 36, 2], [2380, 136, 40, 0],
-    [2700, 136, 30, 4], [2900, 136, 36, 1],
+    [360, 136, 36, 0], [760, 136, 30, 2], [1060, 136, 36, 4], [1380, 136, 40, 1],
+    [1570, 94, 25, 3], [1850, 136, 26, 5], [2150, 136, 36, 2], [2720, 136, 30, 4],
+    [2900, 136, 36, 1], [3020, 136, 30, 3],
   ],
   // zombies: [x, floorY, walkMin, walkMax]
   people: [
     [150, GROUND_Y, 100, 260], [300, GROUND_Y, 250, 430], [520, GROUND_Y, 450, 600],
-    [740, GROUND_Y, 700, 860], [840, 112, 805, 885], [950, GROUND_Y, 900, 1100],
+    [740, GROUND_Y, 700, 860], [920, 112, 895, 965], [950, GROUND_Y, 900, 1100],
     [1120, GROUND_Y, 1080, 1180], [1300, GROUND_Y, 1260, 1340], [1540, GROUND_Y, 1500, 1650],
-    [1800, GROUND_Y, 1770, 1900], [2060, GROUND_Y, 2010, 2200], [2240, 108, 2210, 2270],
+    [1800, GROUND_Y, 1770, 1900], [2060, GROUND_Y, 2010, 2200], [2340, 108, 2310, 2370],
     [2440, GROUND_Y, 2400, 2490], [2780, GROUND_Y, 2740, 2840], [2980, GROUND_Y, 2940, 3060],
   ],
   checkpoints: [1260, 2020, 2600],
@@ -167,7 +170,7 @@ const sfx = {
 
 // ---------- Game state ----------
 let state = 'title'; // title | play | win | gameover
-let boulder, people, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame, introTimer = 0;
+let boulder, people, ghosts, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame = 0, introTimer = 0;
 
 // People never walk onto spikes: trim each walk range at the nearest spike on their floor.
 function walkLimits(x, floorY, min, max) {
@@ -187,11 +190,13 @@ function resetRun() {
       speed: 0.25 + Math.random() * 0.2, hue: Math.floor(Math.random() * 5), alive: true, scared: false,
     };
   });
+  ghosts = LEVEL.ghosts.map(([cx, cy, range, phase]) => ({ cx, cy, range, phase, x: cx, y: cy, face: 1, chase: false }));
   decals = [];
   respawn();
 }
 function respawn() {
-  boulder = { x: spawnX, y: GROUND_Y - 30, vx: 0, vy: 0, rot: 0, onGround: false, coyote: 0, jumpBuf: 0, face: 1 };
+  boulder = { x: spawnX, y: GROUND_Y - 30, vx: 0, vy: 0, rot: 0, onGround: false, coyote: 0, jumpBuf: 0, face: 1, age: 0 };
+  for (const g of ghosts) { [g.x, g.y] = ghostHome(g); g.chase = false; } // ghosts go back to their patrol
   particles = []; floaters = []; deadTimer = 0;
   camX = Math.max(0, spawnX - 110);
 }
@@ -217,10 +222,31 @@ function die() {
   spawnBurst(boulder.x, boulder.y, ['#8a8a96', '#b9b9c6', '#5d5d69'], 24, 2.4);
 }
 
-// Ghosts drift back and forth (and bob up and down a little). Returns [x, y, facing].
-function ghostPos([cx, cy, range, phase]) {
-  const t = frame * TUNE.ghostSpeed + phase;
-  return [cx + Math.sin(t) * range, cy + Math.sin(frame * 0.05 + phase) * 3, Math.cos(t) >= 0 ? 1 : -1];
+// Where a ghost's back-and-forth patrol (with a little bobbing) has it right now: [x, y].
+function ghostHome({ cx, cy, range, phase }) {
+  return [cx + Math.sin(frame * TUNE.ghostSpeed + phase) * range, cy + Math.sin(frame * 0.05 + phase) * 3];
+}
+
+// Ghosts patrol until you come within ghostChaseRadius, then drift toward you. When you get
+// away (a bit past the radius) they float back to their patrol. They get a short grace
+// period after you respawn so you can never be ambushed instantly.
+function updateGhosts() {
+  const b = boulder, hunting = state === 'play' && deadTimer === 0 && b.age > 60;
+  for (const g of ghosts) {
+    const dist = Math.hypot(b.x - g.x, b.y - g.y);
+    g.chase = hunting && dist < TUNE.ghostChaseRadius * (g.chase ? 1.25 : 1);
+    let tx, ty, speed;
+    // chasing ghosts only drift sideways at their usual height, so a well-timed jump always clears them
+    if (g.chase) {
+      tx = clamp(b.x, g.cx - g.range - TUNE.ghostLeash, g.cx + g.range + TUNE.ghostLeash);
+      ty = ghostHome(g)[1]; speed = TUNE.ghostChaseSpeed;
+    }
+    else { [tx, ty] = ghostHome(g); speed = 1; }
+    const dx = tx - g.x, dy = ty - g.y, d = Math.hypot(dx, dy);
+    const step = Math.min(speed, d);
+    if (d > 0.001) { g.x += (dx / d) * step; g.y += (dy / d) * step; }
+    if (Math.abs(dx) > 0.2) g.face = dx > 0 ? 1 : -1;
+  }
 }
 
 function hitsCircleRect(cx, cy, r, rx, ry, rw, rh) {
@@ -269,6 +295,7 @@ function updateBoulder() {
     if (ny < -0.6) b.onGround = true;
   }
   b.coyote = b.onGround ? 6 : b.coyote - 1;
+  b.age++;
   b.rot += b.vx / r;
 
   // spikes
@@ -276,9 +303,9 @@ function updateBoulder() {
     if (hitsCircleRect(b.x, b.y, r - 1, sx + 1, sy - 5, sw - 2, 5)) { die(); return; }
   }
   // ghosts
-  for (const g of LEVEL.ghosts) {
-    const [gx, gy] = ghostPos(g), reach = r - 1 + TUNE.ghostRadius;
-    if ((b.x - gx) ** 2 + (b.y - gy) ** 2 < reach * reach) { die(); return; }
+  for (const g of ghosts) {
+    const reach = r - 1 + TUNE.ghostRadius;
+    if ((b.x - g.x) ** 2 + (b.y - g.y) ** 2 < reach * reach) { die(); return; }
   }
   // pits
   if (b.y > H + 30) { die(); return; }
@@ -352,6 +379,7 @@ function update() {
     if (state === 'win') setLevel((levelIndex + 1) % LEVELS.length);
     startGame();
   }
+  updateGhosts();
   updateFx();
   const target = clamp(boulder.x - 110, 0, LEVEL.width - W);
   camX += (target - camX) * 0.15;
@@ -439,6 +467,29 @@ function drawSolid([x, y, w, h]) {
   px(sx, y + 3, w, 1, shade);
 }
 
+// Pits are the gaps between ground pieces. Fill them with a dark void and a glowing bottom
+// so they're easy to spot against the background.
+function drawPits() {
+  const night = LEVEL.theme === 'night';
+  const ground = LEVEL.solids.filter((s) => s[1] === GROUND_Y).sort((a, b) => a[0] - b[0]);
+  for (let i = 0; i < ground.length - 1; i++) {
+    const a = ground[i][0] + ground[i][2], w = ground[i + 1][0] - a, sx = Math.round(a - camX);
+    if (sx > W || sx + w < 0) continue;
+    px(sx, GROUND_Y, w, H - GROUND_Y, night ? '#04020a' : '#24150d');
+    const glow = night ? '110,255,150' : '255,150,60';
+    for (let k = 0; k < 4; k++) px(sx, H - 16 + k * 4, w, 4, `rgba(${glow},${0.1 + k * 0.1})`);
+    // glowing mist hovering over the hole, visible even against the dark sky
+    for (let k = 0; k < 4; k++) px(sx, GROUND_Y - 12 + k * 3, w, 3, `rgba(${glow},${0.05 + k * 0.05})`);
+    // little glowing wisps rising out of the hole
+    for (let k = 0; k < 3; k++) {
+      const wy = H - ((frame * 0.4 + k * 11 + sx) % 30);
+      px(sx + 6 + ((k * 17 + 5) % Math.max(1, w - 12)), wy, 2, 2, `rgba(${glow},0.7)`);
+    }
+    // darker walls so the hole has depth
+    px(sx, GROUND_Y, 2, H - GROUND_Y, 'rgba(0,0,0,0.5)'); px(sx + w - 2, GROUND_Y, 2, H - GROUND_Y, 'rgba(0,0,0,0.5)');
+  }
+}
+
 function drawDecor([x, kind]) {
   const sx = Math.round(x - camX), y = GROUND_Y;
   if (sx < -20 || sx > W + 20) return;
@@ -498,17 +549,17 @@ function drawZombie(p) {
 }
 
 function drawGhost(g) {
-  const [gx, gy, face] = ghostPos(g);
-  const x = Math.round(gx - camX), y = Math.round(gy);
+  const face = g.face, x = Math.round(g.x - camX), y = Math.round(g.y);
   if (x < -20 || x > W + 20) return;
-  disc(x, y, 9, 'rgba(170,215,255,0.16)'); // glow
+  disc(x, y, 9, g.chase ? 'rgba(190,225,255,0.3)' : 'rgba(170,215,255,0.16)'); // glow, brighter when it's after you
   ctx.fillStyle = 'rgba(235,245,255,0.92)';
   for (let dy = -6; dy <= 0; dy++) { const half = Math.floor(Math.sqrt(36 - dy * dy + 0.5)); ctx.fillRect(x - half, y + dy, half * 2 + 1, 1); }
   ctx.fillRect(x - 6, y + 1, 13, 5);
   const wave = Math.floor(frame / 8) % 2; // wavy bottom edge
   for (let i = 0; i < 13; i += 2) ctx.fillRect(x - 6 + i + wave, y + 6, 2, 2);
-  px(x - 3 + face, y - 2, 2, 3, '#1b1f3a'); px(x + 2 + face, y - 2, 2, 3, '#1b1f3a'); // eyes
-  px(x - 1 + face, y + 2, 2, 2, '#1b1f3a'); // little "oooh" mouth
+  const eyeH = g.chase ? 4 : 3; // wide eyes and a bigger mouth when chasing
+  px(x - 3 + face, y - 2, 2, eyeH, '#1b1f3a'); px(x + 2 + face, y - 2, 2, eyeH, '#1b1f3a'); // eyes
+  px(x - 1 + face, y + 2, 2, g.chase ? 3 : 2, '#1b1f3a'); // little "oooh" mouth
 }
 
 function drawDecal(d) {
@@ -554,6 +605,7 @@ function text(str, x, y, color = '#fff', align = 'left', size = 8) {
 
 function draw() {
   drawBackground();
+  drawPits();
   LEVEL.solids.forEach(drawSolid);
   LEVEL.decor.forEach(drawDecor);
   LEVEL.checkpoints.forEach((cp) => drawFlag(cp, spawnX >= cp ? '#4fe36b' : '#999'));
@@ -562,7 +614,7 @@ function draw() {
   decals.forEach(drawDecal);
   people.forEach((p) => p.alive && (LEVEL.chase ? drawZombie(p) : drawPerson(p)));
   drawBoulder();
-  LEVEL.ghosts.forEach(drawGhost);
+  ghosts.forEach(drawGhost);
   for (const q of particles) px(q.x - camX, q.y, q.size, q.size, q.color);
   for (const f of floaters) text(f.text, f.x - camX, f.y, '#fff', 'center');
 
@@ -602,4 +654,4 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // Test hook for automated checks (harmless in the browser).
-window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get lives() { return lives; }, get people() { return people; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, ghostPos, input, update };
+window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, input, update };
