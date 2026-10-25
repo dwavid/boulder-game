@@ -22,6 +22,8 @@
 
 ## Ideas backlog (add yours here!)
 - [ ] Level 4 and beyond (ideas: ice cave, lava, candy land, space) and a proper level select screen
+- [ ] **Braintopia** (from the kid): the level takes place inside a brain. The people you squish are little brains. The obstacles are synapses that zap.
+- [ ] **Watertopia** (from the kid): an underwater level. The people you squish are little water monsters. The obstacles are hydrothermal vents, little geysers of hot water.
 - [ ] Boulder gets bigger (or faster) as it squishes people
 - [ ] More kinds of enemies: runners, archers who shoot back, people who throw things
 - [ ] More things to smash (crates, ice, cracked floors that hide secrets) and a proper story ending for the baby rock
