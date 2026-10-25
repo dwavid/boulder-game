@@ -6,7 +6,7 @@ A browser side-scroller: you're a boulder, squish people, avoid spikes. Plain HT
 - `index.html`: page, canvas, on-screen touch buttons
 - `game.js`: all game code (tunables at the top in `TUNE`, level in `LEVEL`, then input, sound, update, draw, main loop)
 - `PLAN.md`: concept, done list, ideas backlog. Update it when features land.
-- `.github/workflows/pages.yml`: deploys the repo root to GitHub Pages on push to `main`
+- Hosting: GitHub Pages deploys the repo root from the `main` branch (no workflow file needed)
 
 ## Conventions
 - Logical resolution is 320x180; CSS scales it with `image-rendering: pixelated`. Draw with integer coordinates and the `px()` / `disc()` helpers.

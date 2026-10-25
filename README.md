@@ -11,4 +11,4 @@ You're a boulder. Roll around, run over people, and don't land on spikes.
 See [PLAN.md](PLAN.md) for the roadmap.
 
 ## Enabling GitHub Pages (one time)
-Repo **Settings → Pages → Build and deployment → Source: GitHub Actions**. After that, every push to `main` redeploys the game.
+Repo **Settings → Pages → Build and deployment → Source: Deploy from a branch → `main` / `/ (root)`**. After that, every push to `main` redeploys the game (give it a minute or two).
