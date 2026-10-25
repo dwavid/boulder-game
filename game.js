@@ -155,7 +155,8 @@ function setInput(name, down) {
 addEventListener('keydown', (e) => {
   const n = keyMap[e.key];
   if (n) { e.preventDefault(); setInput(n, true); audioInit(); }
-  else if (state !== 'play' && LEVELS[+e.key - 1]) { setLevel(+e.key - 1); startGame(); }
+  else if ((state !== 'play' || menuOpen) && LEVELS[+e.key - 1]) pickLevel(+e.key - 1);
+  else if (e.key === 'Escape') menuOpen = false;
 });
 addEventListener('keyup', (e) => {
   const n = keyMap[e.key];
@@ -170,7 +171,31 @@ document.querySelectorAll('#controls button').forEach((b) => {
   b.addEventListener('pointercancel', up);
   b.addEventListener('pointerleave', up);
 });
-canvas.addEventListener('pointerdown', () => { audioInit(); if (state !== 'play') input.jumpPressed = true; });
+// Secret level picker: tap/click the "LEVEL n" label at the top of the screen 3 times quickly.
+// (The label is drawn on the canvas, so we work out where on the canvas the pointer landed.)
+let menuOpen = false, hudTaps = [];
+const HUD_LABEL = { x: 120, y: 0, w: 80, h: 20 };
+const menuRow = (i) => { const h = Math.min(24, 96 / LEVELS.length); return { x: 70, y: 56 + i * h, w: 180, h: h - 3 }; };
+const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+function pickLevel(i) { menuOpen = false; setLevel(i); startGame(); }
+
+canvas.addEventListener('pointerdown', (e) => {
+  audioInit();
+  const box = canvas.getBoundingClientRect();
+  const x = ((e.clientX - box.left) / box.width) * W, y = ((e.clientY - box.top) / box.height) * H;
+  if (menuOpen) {
+    const i = LEVELS.findIndex((_, k) => inRect(x, y, menuRow(k)));
+    if (i >= 0) pickLevel(i); else menuOpen = false; // tapping outside the rows closes it
+    return;
+  }
+  if (inRect(x, y, HUD_LABEL)) {
+    const now = performance.now();
+    hudTaps = hudTaps.filter((t) => now - t < 700).concat(now); // keep taps from the last 0.7 seconds
+    if (hudTaps.length >= 3) { menuOpen = true; hudTaps = []; }
+    return;
+  }
+  if (state !== 'play') input.jumpPressed = true;
+});
 
 // ---------- Sound (tiny synth beeps) ----------
 let actx = null;
@@ -429,6 +454,7 @@ function updateFx() {
 
 function update() {
   frame++;
+  if (menuOpen) { input.jumpPressed = false; return; } // the level picker pauses the game
   if (state === 'play') {
     if (deadTimer > 0) {
       deadTimer--;
@@ -815,6 +841,18 @@ function draw() {
     text('LEVEL ' + (levelIndex + 1) + ': ' + LEVEL.name, W / 2, 50, '#ffd23f', 'center', 12);
     text(LEVEL.hint, W / 2, 64, '#fff', 'center');
   }
+
+  if (menuOpen) {
+    px(0, 0, W, H, 'rgba(0,0,0,0.65)');
+    px(60, 28, W - 120, 124, '#1d1a2b'); px(60, 28, W - 120, 2, '#ffd23f'); px(60, 150, W - 120, 2, '#ffd23f');
+    text('PICK A LEVEL', W / 2, 46, '#ffd23f', 'center', 12);
+    LEVELS.forEach((l, i) => {
+      const r = menuRow(i);
+      px(r.x, r.y, r.w, r.h, i === levelIndex ? '#4a4678' : '#2f2b4a');
+      text((i + 1) + '. ' + l.name, r.x + 8, r.y + r.h / 2 + 3, i === levelIndex ? '#ffd23f' : '#fff');
+    });
+    text('tap outside or press Esc to close', W / 2, 146, '#aaa', 'center', 6);
+  }
 }
 
 // ---------- Main loop (fixed 60 updates/sec) ----------
@@ -829,4 +867,4 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // Test hook for automated checks (harmless in the browser).
-window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, gateState, sweepY, laserHits, input, update };
+window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, get menuOpen() { return menuOpen; }, gateState, sweepY, laserHits, input, update };

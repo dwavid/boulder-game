@@ -25,6 +25,6 @@ A browser side-scroller: you're a boulder, squish people, avoid spikes. Plain HT
 
 ## Running and testing
 - `python3 -m http.server 8000` then open http://localhost:8000
-- Start on a specific level with `index.html?level=2`; on the title screen, pressing 1, 2, ... also picks a level.
+- Jumping to a level: `index.html?level=2`; on the title screen pressing 1, 2, ... works; or click/tap the "LEVEL n" label at the top of the screen 3 times quickly to open a level picker (pauses the game; works mid-game; Esc or tapping outside closes it). The picker lists every entry in `LEVELS` automatically.
 - `window.__game` exposes state for automated tests (Playwright is available in cloud sessions).
 - After a change, check the browser console for errors and play through the part you changed.
