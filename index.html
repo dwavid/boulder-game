@@ -37,19 +37,14 @@
   /* the arrows are SVG shapes, not text, so iOS has nothing to select or magnify */
   #controls svg { width: 40%; height: 40%; fill: #fff; pointer-events: none; }
   #controls button.on { background: rgba(255,255,255,.5); }
-  #hint { display: none; color: #cfc8ff; font: 14px sans-serif; text-align: center; margin-top: 14px; pointer-events: none; }
-  /* portrait phone: the 16:9 game is a thin strip at the top, so give the empty space below to bigger buttons */
-  @media (pointer: coarse) and (orientation: portrait) {
-    #hint { display: block; }
-    #controls { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
-    #controls button { width: min(108px, 20vw); height: min(108px, 20vw); }
-    #controls .group { gap: 10px; }
-  }
+  /* portrait phone: game.js (layout) makes the canvas tall and narrow, and the buttons sit under it */
+  .portrait #controls { position: static; width: 100%; box-sizing: border-box; flex: none; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .portrait #controls button { width: min(108px, 20vw); height: min(108px, 20vw); }
+  .portrait #controls .group { gap: 10px; }
 </style>
 </head>
 <body>
 <canvas id="game" width="320" height="180"></canvas>
-<div id="hint">Turn your phone sideways for a bigger game</div>
 <div id="controls">
   <div class="group">
     <button data-key="left" aria-label="left"><svg viewBox="0 0 100 100"><path d="M80 8 L80 92 L12 50 Z"/></svg></button>

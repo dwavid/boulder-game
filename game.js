@@ -1,9 +1,12 @@
 'use strict';
 // BOULD — roll around, squish people, avoid spikes.
 // Everything is drawn with code (no image files). Logical screen is 320x180,
-// scaled up by CSS with crisp pixels.
+// scaled up by CSS with crisp pixels (landscape). In portrait on a phone it is narrower and taller.
 
-const W = 320, H = 180;
+// The screen size changes in portrait (see layout()): narrower and taller, with extra sky above the world.
+// WORLD_H is the height the levels are built for; the world is drawn bottom-aligned, shifted down by topPad.
+const WORLD_H = 180;
+let W = 320, H = 180, topPad = 0;
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
@@ -176,6 +179,28 @@ document.addEventListener('touchend', (e) => { // two quick taps = double-tap zo
 document.addEventListener('dblclick', (e) => e.preventDefault());
 addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false }); // trackpad pinch on a laptop
 
+// ---------- Screen layout (landscape vs portrait) ----------
+// Landscape: 320x180. Portrait phone: about 195 wide and as tall as fits above the buttons, drawn at a whole-number
+// scale so pixels stay crisp. The world sits at the bottom of the screen and the extra height is sky.
+function layout() {
+  const vw = innerWidth, vh = innerHeight;
+  const portrait = vh > vw * 1.15 && matchMedia('(pointer: coarse)').matches;
+  document.documentElement.classList.toggle('portrait', portrait);
+  if (portrait) {
+    const scale = Math.max(2, Math.ceil(vw / 230));
+    const avail = vh - document.getElementById('controls').offsetHeight;
+    W = Math.floor(vw / scale); H = Math.max(WORLD_H, Math.floor(avail / scale));
+    canvas.style.width = W * scale + 'px'; canvas.style.height = H * scale + 'px';
+  } else {
+    W = 320; H = WORLD_H;
+    canvas.style.width = ''; canvas.style.height = '';
+  }
+  topPad = H - WORLD_H;
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; ctx.imageSmoothingEnabled = false; }
+}
+addEventListener('resize', layout);
+addEventListener('orientationchange', layout);
+
 // ---------- Input ----------
 const input = { left: false, right: false, jump: false, jumpPressed: false, down: false, downPressed: false };
 const keyMap = {
@@ -212,8 +237,9 @@ document.querySelectorAll('#controls button').forEach((b) => {
 // Secret level picker: tap/click the "LEVEL n" label at the top of the screen 3 times quickly.
 // (The label is drawn on the canvas, so we work out where on the canvas the pointer landed.)
 let menuOpen = false, hudTaps = [];
-const HUD_LABEL = { x: 120, y: 0, w: 80, h: 20 };
-const menuRow = (i) => { const h = Math.min(24, 96 / LEVELS.length); return { x: 70, y: 56 + i * h, w: 180, h: h - 3 }; };
+const hudLabel = () => ({ x: W / 2 - 40, y: 0, w: 80, h: 20 });
+const menuX = () => (W < 260 ? 8 : 60);
+const menuRow = (i) => { const h = Math.min(24, 96 / LEVELS.length); return { x: menuX() + 10, y: 56 + i * h, w: W - 2 * menuX() - 20, h: h - 3 }; };
 const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 function pickLevel(i) { menuOpen = false; setLevel(i); startGame(); }
 
@@ -226,7 +252,7 @@ canvas.addEventListener('pointerdown', (e) => {
     if (i >= 0) pickLevel(i); else menuOpen = false; // tapping outside the rows closes it
     return;
   }
-  if (inRect(x, y, HUD_LABEL)) {
+  if (inRect(x, y, hudLabel())) {
     const now = performance.now();
     hudTaps = hudTaps.filter((t) => now - t < 700).concat(now); // keep taps from the last 0.7 seconds
     if (hudTaps.length >= 3) { menuOpen = true; hudTaps = []; }
@@ -311,7 +337,7 @@ function respawn() {
   boulder = { x: spawnX, y: GROUND_Y - 30, vx: 0, vy: 0, rot: 0, onGround: false, coyote: 0, jumpBuf: 0, face: 1, age: 0 };
   for (const g of ghosts) { [g.x, g.y] = ghostHome(g); g.chase = false; } // ghosts go back to their patrol
   particles = []; floaters = []; deadTimer = 0;
-  camX = Math.max(0, spawnX - 110);
+  camX = Math.max(0, spawnX - W * 0.34);
 }
 function startGame() { resetRun(); state = 'play'; introTimer = 150; input.jumpPressed = false; }
 resetRun();
@@ -477,7 +503,7 @@ function updateBoulder() {
     if ((b.x - g.x) ** 2 + (b.y - g.y) ** 2 < reach * reach) { die(); return; }
   }
   // pits
-  if (b.y > (LEVEL.underground && b.x > LEVEL.underground.x0 ? 330 : H + 30)) { die(); return; }
+  if (b.y > (LEVEL.underground && b.x > LEVEL.underground.x0 ? 330 : WORLD_H + 30)) { die(); return; }
 
   // people
   for (const p of people) {
@@ -699,7 +725,9 @@ function update() {
   }
   updateGhosts();
   updateFx();
-  const target = boss && boss.active ? LEVEL.boss.camX : clamp(boulder.x - 110, 0, LEVEL.width - W);
+  // (On a narrow portrait screen the whole boss arena doesn't fit, so there the camera follows you inside the arena.)
+  const arenaCam = clamp(boulder.x - W / 2, LEVEL.boss ? LEVEL.boss.camX : 0, (LEVEL.boss ? LEVEL.boss.camX : 0) + 320 - W);
+  const target = boss && boss.active ? arenaCam : clamp(boulder.x - W * 0.34, 0, LEVEL.width - W);
   if (bossIntro > 0 && state === 'play') bossIntro--;
   // once you're underground the camera follows you down (it never scrolls vertically anywhere else)
   const un = LEVEL.underground, targetY = un && boulder.x > un.x0 ? clamp((boulder.y - 152) * 1.2, 0, un.maxCamY) : 0;
@@ -760,7 +788,7 @@ function repeating(spacing, par, fn) {
 }
 
 function drawCastleBackground() {
-  px(0, 0, W, H, '#241f33');
+  px(0, 0, W, WORLD_H, '#241f33');
   // brick wall: every row is shifted a bit, scrolling slowly behind everything else
   const off = camX * 0.5;
   for (let row = 0; row < 14; row++) {
@@ -795,7 +823,7 @@ function drawCastleBackground() {
 }
 
 function drawDayBackground() {
-  px(0, 0, W, H, '#8fd3ff');
+  px(0, 0, W, WORLD_H, '#8fd3ff');
   // clouds
   for (let i = 0; i < 8; i++) {
     const x = ((i * 130 - camX * 0.2) % (W + 120) + (W + 120)) % (W + 120) - 60;
@@ -874,22 +902,22 @@ function drawPits() {
   for (let i = 0; i < ground.length - 1; i++) {
     const a = ground[i][0] + ground[i][2], w = ground[i + 1][0] - a, sx = Math.round(a - camX);
     if (sx > W || sx + w < 0) continue;
-    px(sx, GROUND_Y, w, H - GROUND_Y, { day: '#24150d', night: '#04020a', castle: '#0a0508' }[theme]);
+    px(sx, GROUND_Y, w, WORLD_H - GROUND_Y, { day: '#24150d', night: '#04020a', castle: '#0a0508' }[theme]);
     if (theme === 'castle') { // a glowing red-hot dungeon pit: not animated, but easy to see
-      for (let k = 0; k < 4; k++) px(sx, H - 16 + k * 4, w, 4, `rgba(255,100,40,${0.12 + k * 0.1})`);
+      for (let k = 0; k < 4; k++) px(sx, WORLD_H - 16 + k * 4, w, 4, `rgba(255,100,40,${0.12 + k * 0.1})`);
       for (let k = 0; k < 4; k++) px(sx, GROUND_Y - 12 + k * 3, w, 3, `rgba(255,100,40,${0.04 + k * 0.04})`);
     }
     if (night) { // spooky green glow, mist and rising wisps (daytime pits are just dirt holes)
       const glow = '110,255,150';
-      for (let k = 0; k < 4; k++) px(sx, H - 16 + k * 4, w, 4, `rgba(${glow},${0.1 + k * 0.1})`);
+      for (let k = 0; k < 4; k++) px(sx, WORLD_H - 16 + k * 4, w, 4, `rgba(${glow},${0.1 + k * 0.1})`);
       for (let k = 0; k < 4; k++) px(sx, GROUND_Y - 12 + k * 3, w, 3, `rgba(${glow},${0.05 + k * 0.05})`);
       for (let k = 0; k < 3; k++) { // rise at a constant speed: depends only on time, not on scrolling
-        const wy = H - ((frame * 0.4 + k * 11 + a) % 30);
+        const wy = WORLD_H - ((frame * 0.4 + k * 11 + a) % 30);
         px(sx + 6 + ((k * 17 + 5) % Math.max(1, w - 12)), wy, 2, 2, `rgba(${glow},0.7)`);
       }
     }
     // darker walls so the hole has depth
-    px(sx, GROUND_Y, 2, H - GROUND_Y, 'rgba(0,0,0,0.5)'); px(sx + w - 2, GROUND_Y, 2, H - GROUND_Y, 'rgba(0,0,0,0.5)');
+    px(sx, GROUND_Y, 2, WORLD_H - GROUND_Y, 'rgba(0,0,0,0.5)'); px(sx + w - 2, GROUND_Y, 2, WORLD_H - GROUND_Y, 'rgba(0,0,0,0.5)');
   }
 }
 
@@ -946,7 +974,7 @@ function drawBubble(speakerX, speakerY, msg, pink) {
   }
   lines.push(cur);
   const w = Math.ceil(Math.max(...lines.map((l) => ctx.measureText(l).width))) + 12, h = lines.length * 9 + 7;
-  const sx = speakerX - camX, sy = speakerY - camY;
+  const sx = speakerX - camX, sy = speakerY - camY + topPad;
   const bx = Math.round(clamp(sx - w / 2, 6, W - 6 - w)), by = Math.max(8, Math.round(sy - 22 - h));
   px(bx - 1, by - 1, w + 2, h + 2, '#1b1f3a'); px(bx, by, w, h, pink ? '#ffe3f1' : '#ffffff');
   const tx = Math.round(clamp(sx, bx + 5, bx + w - 6)); // little tail pointing at who's talking
@@ -1204,15 +1232,16 @@ function drawFlag(x, label) {
 function text(str, x, y, color = '#fff', align = 'left', size = 8) {
   ctx.font = `bold ${size}px monospace`;
   ctx.textAlign = align;
-  ctx.fillStyle = '#000'; ctx.fillText(str, Math.round(x) + 1, Math.round(y) + 1);
-  ctx.fillStyle = color; ctx.fillText(str, Math.round(x), Math.round(y));
+  ctx.fillStyle = '#000'; ctx.fillText(str, Math.round(x) + 1, Math.round(y) + 1, W - 8);
+  ctx.fillStyle = color; ctx.fillText(str, Math.round(x), Math.round(y), W - 8);
 }
 
 function draw() {
   px(0, 0, W, H, '#000');
   ctx.save();
   const sh = shake > 0 ? Math.min(2, Math.ceil(shake / 4)) * (frame % 2 ? 1 : -1) : 0;
-  ctx.translate(sh, -Math.round(camY)); // the world layer: scrolls down when you go underground, shakes on a smash
+  ctx.translate(sh, topPad - Math.round(camY)); // the world layer: scrolls down when you go underground, shakes on a smash
+  px(0, -topPad - 100, W, topPad + 100, { day: '#8fd3ff', night: '#0b1030', castle: '#16121f' }[LEVEL.theme]); // sky above the world (portrait)
   drawBackground();
   drawPits();
   drawCavity();
@@ -1262,14 +1291,15 @@ function draw() {
   }
 
   const lastLevel = levelIndex === LEVELS.length - 1;
+  const PANEL_X = W < 260 ? 6 : 40;
   if (state === 'title') {
-    px(40, 52, W - 80, 70, 'rgba(0,0,0,0.55)');
+    px(PANEL_X, 52, W - 2 * PANEL_X, 70, 'rgba(0,0,0,0.55)');
     text('BOULD', W / 2, 78, '#ffd23f', 'center', 16);
     text(LEVEL.hint, W / 2, 96, '#fff', 'center');
-    text('Arrows/WASD + Space  or  tap buttons', W / 2, 108, '#ccc', 'center');
+    text(W < 260 ? 'Use the buttons' : 'Arrows/WASD + Space  or  tap buttons', W / 2, 108, '#ccc', 'center');
     text('Press jump to start', W / 2, 118, '#fff', 'center');
   } else if (state === 'win' || state === 'gameover') {
-    px(40, 52, W - 80, 70, 'rgba(0,0,0,0.55)');
+    px(PANEL_X, 52, W - 2 * PANEL_X, 70, 'rgba(0,0,0,0.55)');
     const title = state === 'gameover' ? 'GAME OVER' : LEVEL.boss ? 'YOU SAVED THE BABY ROCK!' : lastLevel ? 'YOU BEAT THE GAME!' : 'LEVEL CLEAR!';
     text(title, W / 2, 78, state === 'win' ? '#4fe36b' : '#ff6b6b', 'center', title.length > 20 ? 12 : 16);
     text('Squished ' + squished + ' of ' + LEVEL.people.length, W / 2, 98, '#fff', 'center');
@@ -1281,7 +1311,7 @@ function draw() {
 
   if (menuOpen) {
     px(0, 0, W, H, 'rgba(0,0,0,0.65)');
-    px(60, 28, W - 120, 124, '#1d1a2b'); px(60, 28, W - 120, 2, '#ffd23f'); px(60, 150, W - 120, 2, '#ffd23f');
+    const mx = menuX(); px(mx, 28, W - 2 * mx, 124, '#1d1a2b'); px(mx, 28, W - 2 * mx, 2, '#ffd23f'); px(mx, 150, W - 2 * mx, 2, '#ffd23f');
     text('PICK A LEVEL', W / 2, 46, '#ffd23f', 'center', 12);
     LEVELS.forEach((l, i) => {
       const r = menuRow(i);
@@ -1293,6 +1323,7 @@ function draw() {
 }
 
 // ---------- Main loop (fixed 60 updates/sec) ----------
+layout();
 frame = 0;
 let last = performance.now(), acc = 0;
 function loop(now) {
