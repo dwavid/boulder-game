@@ -248,6 +248,9 @@ addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passi
 // ---------- Screen layout (landscape vs portrait) ----------
 // Landscape: 320x180. Portrait phone: about 195 wide and as tall as fits above the buttons, drawn at a whole-number
 // scale so pixels stay crisp. The world sits at the bottom of the screen and the extra height is sky.
+// The canvas holds SS x as many pixels as the logical size (the game is still drawn in 320x180 units via a transform),
+// so text is rendered sharp instead of being drawn tiny and blown up blurry.
+const SS = 4;
 function layout() {
   const vw = innerWidth, vh = innerHeight;
   const portrait = vh > vw * 1.15 && matchMedia('(pointer: coarse)').matches;
@@ -262,7 +265,7 @@ function layout() {
     canvas.style.width = ''; canvas.style.height = '';
   }
   topPad = H - WORLD_H;
-  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; ctx.imageSmoothingEnabled = false; }
+  if (canvas.width !== W * SS || canvas.height !== H * SS) { canvas.width = W * SS; canvas.height = H * SS; ctx.imageSmoothingEnabled = false; }
 }
 addEventListener('resize', layout);
 addEventListener('orientationchange', layout);
@@ -1501,6 +1504,7 @@ function text(str, x, y, color = '#fff', align = 'left', size = 8) {
 }
 
 function draw() {
+  ctx.setTransform(SS, 0, 0, SS, 0, 0);
   px(0, 0, W, H, '#000');
   ctx.save();
   const sh = shake > 0 ? Math.min(2, Math.ceil(shake / 4)) * (frame % 2 ? 1 : -1) : 0;
@@ -1550,7 +1554,7 @@ function draw() {
   }
   if (ending && ending.step === 'talk') {
     const line = LEVEL.underground.lines[ending.line];
-    if (line.who === 'baby') drawBubble(baby.x, baby.y - 8, line.text, true);
+    if (line.who === 'baby') drawBubble(baby.x, LEVEL.underground.floorY - LEVEL.underground.babyR - 8, line.text, true); // anchored to the floor so the bubble doesn't hop;
     else drawBubble(boulder.x, boulder.y - TUNE.radius, line.text, false);
   }
 
