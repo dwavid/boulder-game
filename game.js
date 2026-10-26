@@ -392,7 +392,7 @@ const SQUISH_COLORS = {
   zombie: ['#9be07a', '#eaeaea', '#c9b8ff'],
   knight: ['#c8d2e6', '#ffffff', '#e8303a'],
   brain: ['#ff9ec4', '#ffffff', '#c9a2ff', '#8fd8ff'],
-  monster: ['#5de0c4', '#ffffff', '#7ab8ff', '#c9f5ff'],
+  monster: ['#2a8ad0', '#ffffff', '#7ac0ff', '#c9f5ff'],
 };
 
 // ---------- Game state ----------
@@ -1329,8 +1329,9 @@ function drawLittleBrain(p) {
   if (p.scared) { px(x - 6, y - 9 - step, 1, 3, BRAIN_COLORS[p.hue]); px(x + 6, y - 9 - step, 1, 3, BRAIN_COLORS[p.hue]); px(x - 1, y - 5, 2, 1, '#222'); }
 }
 
-// A little water monster: a gooey teal blob with a fin on top, one big eye or two, and wiggly tentacle feet.
-const MONSTER_COLORS = ['#5de0c4', '#7ab8ff', '#c79bff', '#ffb36b', '#8fe36b'];
+// A little water monster: a gooey blue water blob with a fin on top, one big eye or two, and wiggly tentacle feet.
+// They're made of water, so they're blues close to (but never exactly) the background bands #0a3a66 ... #1068a8.
+const MONSTER_COLORS = ['#0b4f89', '#0f5f9d', '#1470b4', '#1a78bd', '#0a4270'];
 function drawWaterMonster(p) {
   const x = Math.round(p.x - camX), y = Math.round(p.floorY);
   if (x < -10 || x > W + 10) return;
@@ -1579,7 +1580,7 @@ function drawDecal(d) {
   const x = Math.round(d.x - camX);
   if (x < -10 || x > W + 10) return;
   if (LEVEL.kind === 'knight') { px(x - 5, d.y - 1, 10, 1, '#9fb1cf'); px(x - 1, d.y - 2, 3, 1, '#c8d2e6'); px(x + 3, d.y - 2, 2, 1, '#e8303a'); return; }
-  if (LEVEL.kind === 'monster') { px(x - 5, d.y - 1, 10, 1, '#5de0c4'); px(x - 2, d.y - 2, 4, 1, '#c9f5ff'); px(x + 3, d.y - 2, 2, 1, '#7ab8ff'); return; }
+  if (LEVEL.kind === 'monster') { px(x - 5, d.y - 1, 10, 1, '#1470b4'); px(x - 2, d.y - 2, 4, 1, '#2a8ad0'); px(x + 3, d.y - 2, 2, 1, '#1a78bd'); return; }
   if (LEVEL.kind === 'brain') { px(x - 5, d.y - 1, 10, 1, '#ff9ec4'); px(x - 2, d.y - 2, 4, 1, '#ffc2dc'); px(x + 3, d.y - 2, 2, 1, '#c9a2ff'); return; }
   if (LEVEL.kind === 'zombie') { px(x - 5, d.y - 1, 10, 1, '#86c97e'); px(x - 2, d.y - 2, 4, 1, '#9be07a'); px(x + 3, d.y - 2, 2, 1, '#eaeaea'); return; }
   px(x - 4, d.y - 1, 8, 1, SHIRTS[d.hue]); px(x - 2, d.y - 2, 4, 1, '#ffd8b0');
