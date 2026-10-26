@@ -796,6 +796,7 @@ function updateEnding() {
     if (e.t === 62) { baby.free = true; baby.vy = -2.6; sfx.checkpoint(); next('talk'); }
   } else if (e.step === 'talk') {
     const line = u.lines[e.line];
+    b.face = baby.x > b.x ? 1 : -1; baby.face = -b.face; // they look at each other while they talk
     if (line.who === 'baby' && e.t % 34 === 2) baby.vy = -2.2; // the baby hops while it talks
     if (skip && e.t > 15) { e.line++; e.t = 0; if (e.line >= u.lines.length) next('rollOut'); }
   } else if (e.step === 'rollOut') { // both roll off to the right through the tunnel
@@ -1159,6 +1160,11 @@ function drawKey(x, y) {
   if (frame % 30 < 4) px(sx + 3, sy - 4, 1, 1, '#fff');
 }
 
+// True while `who` ('boulder' or 'baby') is the one talking in the ending; the mouth flaps open and shut.
+function isTalking(who) {
+  return !!ending && ending.step === 'talk' && LEVEL.underground.lines[ending.line].who === who && frame % 12 < 8;
+}
+
 function drawBaby() {
   if (!baby) return;
   const x = Math.round(baby.x - camX), y = Math.round(baby.y), r = LEVEL.underground.babyR;
@@ -1166,13 +1172,15 @@ function drawBaby() {
   disc(x, y, r + 1, '#3a3a46'); disc(x, y, r, '#b9b9cc');
   for (let i = 0; i < 3; i++) { const a = baby.rot + i * 2.1; px(x + Math.cos(a) * r / 2, y + Math.sin(a) * r / 2, 1, 1, '#8b8ba0'); }
   px(x - 1, y - r - 2, 1, 2, '#7fcf86'); px(x + 1, y - r - 3, 1, 3, '#7fcf86'); // a little tuft of baby grass
+  const f = baby.face || 1, open = isTalking('baby'), look = f > 0 ? 1 : 0; // the face and pupils turn toward who it's looking at
   if (r < 6) { // a smaller baby: smaller face
-    px(x - 2, y - 2, 2, 2, '#fff'); px(x + 1, y - 2, 2, 2, '#fff'); px(x - 1, y - 1, 1, 1, '#111'); px(x + 2, y - 1, 1, 1, '#111');
-    px(x, y + 1, 1, 1, '#111'); px(x - 3, y + 1, 1, 1, '#ffb3c8'); px(x + 3, y + 1, 1, 1, '#ffb3c8');
+    px(x - 2 + f, y - 2, 2, 2, '#fff'); px(x + 1 + f, y - 2, 2, 2, '#fff'); px(x - 2 + f + look, y - 1, 1, 1, '#111'); px(x + 1 + f + look, y - 1, 1, 1, '#111');
+    if (open) px(x - 1 + f, y + 1, 2, 2, '#111'); else px(x + f, y + 1, 1, 1, '#111');
+    px(x - 3, y + 1, 1, 1, '#ffb3c8'); px(x + 3, y + 1, 1, 1, '#ffb3c8');
     return;
   }
-  px(x - 3, y - 2, 2, 3, '#fff'); px(x + 1, y - 2, 2, 3, '#fff'); px(x - 2, y - 1, 1, 2, '#111'); px(x + 2, y - 1, 1, 2, '#111'); // big eyes
-  px(x - 1, y + 2, 2, 1, '#111');
+  px(x - 3 + f, y - 2, 2, 3, '#fff'); px(x + 1 + f, y - 2, 2, 3, '#fff'); px(x - 3 + f + look, y - 1, 1, 2, '#111'); px(x + 1 + f + look, y - 1, 1, 2, '#111'); // big eyes
+  if (open) px(x - 1 + f, y + 2, 2, 2, '#111'); else px(x - 1 + f, y + 2, 2, 1, '#111');
   px(x - 5, y + 1, 2, 1, '#ffb3c8'); px(x + 4, y + 1, 2, 1, '#ffb3c8'); // blushing cheeks
 }
 
@@ -1592,7 +1600,8 @@ function drawBoulder() {
   const ex = b.face * 1;
   px(cx - 4 + ex, cy - 3, 3, 4, '#fff'); px(cx + 1 + ex, cy - 3, 3, 4, '#fff');
   px(cx - 3 + ex + b.face, cy - 2, 1, 2, '#111'); px(cx + 2 + ex + b.face, cy - 2, 1, 2, '#111');
-  px(cx - 2 + ex, cy + 3, 5, 1, '#111');
+  if (isTalking('boulder')) px(cx - 1 + ex, cy + 3, 3, 3, '#111'); // mouth open while it's talking
+  else px(cx - 2 + ex, cy + 3, 5, 1, '#111');
   if (b.vx * b.face > 1.5) px(cx - 1 + ex, cy + 4, 3, 1, '#111');
 }
 
