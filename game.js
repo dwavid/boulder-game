@@ -117,7 +117,7 @@ const LEVELS = [{
     // stone ledges and steps
     [420, 112, 100, 8], [1020, 108, 90, 8], [1830, 108, 110, 8], [2200, 132, 30, 18], [2230, 114, 30, 36],
     // boss arena: a ledge on each side (the boss's head is too high to reach from the ground) and a wall at the end
-    [3124, 112, 64, 8], [3320, 112, 64, 8], [3392, 0, 8, GROUND_Y],
+    [3124, 112, 64, 8], [3304, 112, 52, 8], [3392, 0, 8, GROUND_Y],
   ],
   // lasers: ['gate', x, phase] blinks on and off from ceiling to floor (wait for it to go off, then roll through);
   //         ['sweep', x, width, phase] is a beam that slowly bobs up and down (go under when high, hop over when low)
@@ -163,7 +163,7 @@ const LEVELS = [{
     // platforms and steps
     [360, 112, 80, 8], [900, 108, 80, 8], [1700, 132, 30, 18], [1730, 114, 30, 36], [2320, 110, 70, 8],
     // boss arena (same shape as the castle's): a ledge on each side to leap from, and a wall at the end
-    [3124, 112, 64, 8], [3320, 112, 64, 8], [3392, 0, 8, GROUND_Y],
+    [3124, 112, 64, 8], [3304, 112, 52, 8], [3392, 0, 8, GROUND_Y],
   ],
   // synapses (in the lasers list): ['synapse', x, width, phase] is an electric arc between two neurons that blinks like a
   // gate (off, yellow sparks as a warning, then zapping). It only reaches up to about knee height, so hop over it or wait.
