@@ -26,7 +26,7 @@ A browser side-scroller called BOULD (the name the owner's 4-year-old picked): y
 - Platforms you must jump onto should have a top at y >= 108 (jump height is ~50px).
 - Level design rules learned the hard way: checkpoints must be on solid ground (not over a pit); don't put a platform within ~50px above the ground where a spike jump happens (the boulder bonks its head); don't pack a spike right before a pit.
 - Spikes on a floating platform only make sense if the platform is long enough to jump over them (roughly spike width + 60px of platform on each side). Otherwise leave the platform spike-free.
-- People never walk onto spikes or through lasers (`walkLimits` trims their walk range), so no extra work is needed when adding them.
+- People never walk onto spikes or through lasers, and never past `goalX` (the final flag): `walkLimits` trims their walk range (and `resetRun` clamps their start), so no extra work is needed when adding them. Rule: no squishable enemy may ever be beyond the final flag, since touching it ends the level.
 - Level 3 arena is the last piece of the level (width 3400); a level with a boss has no `goalX`: its ending script calls `state = 'win'`.
 - Pits are drawn automatically as the gaps between ground pieces (`drawPits`: dark void, glowing bottom, mist). Keep pits <= 60px wide.
 - Zooming is blocked on purpose (iPad Safari ignores `user-scalable=no`): the `// No zooming` block in `game.js` cancels pinch gestures, double-tap and trackpad pinch, and the CSS sets `touch-action: none`. Keep new touch handling compatible with that (use pointer events; don't rely on `click` or double-tap).

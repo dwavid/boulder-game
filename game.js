@@ -223,7 +223,7 @@ const LEVELS = [{
     [740, GROUND_Y, 700, 780], [940, 108, 905, 975], [900, GROUND_Y, 860, 1020], [1160, GROUND_Y, 1110, 1230],
     [1330, GROUND_Y, 1320, 1360], [1500, GROUND_Y, 1450, 1540], [1650, GROUND_Y, 1620, 1690], [1745, 114, 1738, 1752],
     [1950, GROUND_Y, 1900, 1990], [2110, GROUND_Y, 2070, 2130], [2355, 110, 2325, 2385], [2300, GROUND_Y, 2240, 2420],
-    [2540, GROUND_Y, 2500, 2570], [2680, GROUND_Y, 2650, 2720], [2830, GROUND_Y, 2790, 2870], [2980, GROUND_Y, 2940, 3060],
+    [2540, GROUND_Y, 2500, 2570], [2680, GROUND_Y, 2650, 2720], [2830, GROUND_Y, 2790, 2870], [2980, GROUND_Y, 2940, 3010],
   ],
   checkpoints: [725, 1330, 2080, 2670],
   goalX: 3030,
@@ -411,6 +411,8 @@ function walkLimits(x, floorY, min, max) {
     if (sy !== floorY || sx + sw < min || sx > max) continue;
     if (sx > x) max = Math.min(max, sx - 5); else min = Math.max(min, sx + sw + 5);
   }
+  // nobody ever goes past the final flag: touching it wins the level, so you couldn't squish them any more
+  if (LEVEL.goalX) { max = Math.min(max, LEVEL.goalX - 12); min = Math.min(min, max); }
   return [min, max];
 }
 
@@ -419,7 +421,7 @@ function resetRun() {
   people = LEVEL.people.map(([x, floorY, lo, hi]) => {
     const [min, max] = walkLimits(x, floorY, lo, hi);
     return {
-      x, floorY, min, max, dir: Math.random() < 0.5 ? -1 : 1,
+      x: Math.min(x, max), floorY, min, max, dir: Math.random() < 0.5 ? -1 : 1,
       speed: 0.25 + Math.random() * 0.2, hue: Math.floor(Math.random() * 5), alive: true, scared: false,
     };
   });
