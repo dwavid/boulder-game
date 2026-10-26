@@ -316,6 +316,7 @@ function setInput(name, down) {
 addEventListener('keydown', (e) => {
   const n = keyMap[e.key];
   if (n) { e.preventDefault(); setInput(n, true); audioInit(); }
+  else if (e.key === 'm' || e.key === 'M') { audioInit(); setMuted(!muted); }
   else if ((state !== 'play' || menuOpen) && LEVELS[+e.key - 1]) pickLevel(+e.key - 1);
   else if (e.key === 'Escape') menuOpen = false;
 });
@@ -351,6 +352,7 @@ canvas.addEventListener('pointerdown', (e) => {
     if (i >= 0) pickLevel(i); else menuOpen = false; // tapping outside the rows closes it
     return;
   }
+  if (inRect(x, y, { x: 0, y: 14, w: 50, h: 12 })) { setMuted(!muted); return; } // the SOUND on/off label
   if (inRect(x, y, hudLabel())) {
     const now = performance.now();
     hudTaps = hudTaps.filter((t) => now - t < 700).concat(now); // keep taps from the last 0.7 seconds
@@ -360,33 +362,216 @@ canvas.addEventListener('pointerdown', (e) => {
   if (state !== 'play' || ending) input.jumpPressed = true;
 });
 
-// ---------- Sound (tiny synth beeps) ----------
-let actx = null;
+// ---------- Sound (all synthesized with Web Audio, no sound files) ----------
+// Everything goes through `master` so M / the SOUND button can mute it. `delay` is seconds from now.
+let actx = null, master = null, noiseBuf = null, muted = false;
+try { muted = localStorage.getItem('bould-muted') === '1'; } catch (e) { /* storage blocked: fine */ }
 function audioInit() {
   if (!actx && (window.AudioContext || window.webkitAudioContext)) {
     actx = new (window.AudioContext || window.webkitAudioContext)();
+    master = actx.createGain(); master.gain.value = muted ? 0 : 1; master.connect(actx.destination);
+    noiseBuf = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    setInterval(musicTick, 25);
   }
   if (actx && actx.state === 'suspended') actx.resume();
 }
-function beep(freq, dur, type = 'square', vol = 0.05, slide = 0) {
+function setMuted(m) {
+  muted = m;
+  if (master) master.gain.setTargetAtTime(m ? 0 : 1, actx.currentTime, 0.02);
+  try { localStorage.setItem('bould-muted', m ? '1' : '0'); } catch (e) { /* storage blocked: fine */ }
+}
+function beep(freq, dur, type = 'square', vol = 0.05, slide = 0, delay = 0, dest = master) {
   if (!actx) return;
-  const t = actx.currentTime;
+  const t = actx.currentTime + delay;
   const o = actx.createOscillator(), g = actx.createGain();
   o.type = type;
   o.frequency.setValueAtTime(freq, t);
   if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
   g.gain.setValueAtTime(vol, t);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g); g.connect(actx.destination);
+  o.connect(g); g.connect(dest);
   o.start(t); o.stop(t + dur);
 }
+// A tone that glides from f0 to f1 while its volume goes from v0 to v1 (for charge-ups and humming).
+function tone(type, f0, f1, dur, v0, v1, delay = 0, dest = master) {
+  if (!actx) return;
+  const t = actx.currentTime + delay;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(v0, t); g.gain.linearRampToValueAtTime(v1, t + dur); g.gain.linearRampToValueAtTime(0, t + dur + 0.03);
+  o.connect(g); g.connect(dest);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+// Filtered noise: the filter sweeps from f0 to f1 and the volume from v0 to v1 (whooshes, crackles, splats, drums).
+function noise(filter, f0, f1, q, dur, v0, v1, delay = 0, dest = master) {
+  if (!actx) return;
+  const t = actx.currentTime + delay;
+  const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+  s.buffer = noiseBuf; s.loop = true;
+  f.type = filter; f.Q.value = q;
+  f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(v0, t); g.gain.linearRampToValueAtTime(v1, t + dur); g.gain.linearRampToValueAtTime(0, t + dur + 0.03);
+  s.connect(f); f.connect(g); g.connect(dest);
+  s.start(t, Math.random()); s.stop(t + dur + 0.05);
+}
+const rand = (a, b) => a + Math.random() * (b - a);
 const sfx = {
   jump: () => beep(300, 0.15, 'square', 0.04, 300),
-  squish: () => beep(500, 0.12, 'square', 0.06, -380),
+  // a cartoony splat: thud + wet noise + a bloop + two sparkly pings (pitch varies a little each time)
+  squish: () => {
+    const r = rand(0.9, 1.15);
+    tone('sine', 230 * r, 60, 0.14, 0.2, 0.15);
+    noise('bandpass', 1500, 300, 1.2, 0.16, 0.14, 0);
+    tone('triangle', 520 * r, 170, 0.12, 0.08, 0.05, 0.02);
+    beep(880 * r, 0.07, 'square', 0.035, 0, 0.1);
+    beep(1320 * r, 0.1, 'square', 0.03, 0, 0.16);
+  },
   die: () => beep(400, 0.5, 'sawtooth', 0.06, -350),
   win: () => { beep(523, 0.15); setTimeout(() => beep(659, 0.15), 120); setTimeout(() => beep(784, 0.3), 240); },
   checkpoint: () => beep(700, 0.15, 'triangle', 0.06, 300),
 };
+
+// ----- Hazard sounds: lasers, synapses and vents charge up when they enter their warning, then fire -----
+// `v` is the volume, 0..1, from how far away the boulder is. The warning lasts TUNE.gateOnAt - TUNE.gateWarnAt = 30 frames
+// (0.5s) and the deadly part 90 frames (1.5s), so the sounds are built to those lengths.
+const HAZARD_SFX = {
+  gate: {
+    charge: (v) => { tone('sawtooth', 160, 1400, 0.5, 0.005, 0.055 * v); tone('square', 240, 2100, 0.5, 0.002, 0.025 * v); },
+    fire: (v) => {
+      tone('sawtooth', 1800, 180, 0.2, 0.09 * v, 0.02 * v);
+      tone('square', 110, 110, 1.4, 0.04 * v, 0.03 * v); tone('square', 113, 113, 1.4, 0.03 * v, 0.02 * v); // two close notes beat against each other: a buzzing hum
+    },
+  },
+  synapse: {
+    charge: (v) => {
+      tone('sawtooth', 300, 1800, 0.5, 0.005, 0.04 * v);
+      for (let i = 0; i < 12; i++) noise('highpass', rand(2500, 5000), 3000, 1, 0.03, 0.05 * v, 0, i * 0.04 + rand(0, 0.02)); // little crackles
+    },
+    fire: (v) => {
+      tone('sawtooth', 2200, 150, 0.15, 0.09 * v, 0.02 * v);
+      tone('sawtooth', 60, 60, 1.4, 0.05 * v, 0.03 * v);
+      for (let i = 0; i < 22; i++) noise('bandpass', rand(1500, 6000), rand(800, 3000), 3, rand(0.02, 0.06), 0.09 * v, 0, i * 0.065 + rand(0, 0.04)); // zzt-zzt-zzt
+    },
+  },
+  vent: {
+    charge: (v) => {
+      tone('sine', 90, 260, 0.5, 0.01, 0.1 * v);
+      noise('bandpass', 200, 900, 1, 0.5, 0.01, 0.07 * v);
+      for (let i = 0; i < 6; i++) beep(rand(300, 700), 0.06, 'sine', 0.05 * v, 200, i * 0.08 + rand(0, 0.04)); // bubbles
+    },
+    fire: (v) => { // WHOOOSH: noise sweeping up then back down
+      tone('sine', 80, 50, 0.25, 0.14 * v, 0);
+      noise('bandpass', 300, 1500, 0.8, 0.45, 0.01, 0.16 * v);
+      noise('bandpass', 1500, 400, 0.8, 1.05, 0.16 * v, 0, 0.45);
+    },
+  },
+};
+let hazPrev = [], hazLevel = null, sweepHum = null;
+// Called every frame: starts the charge / fire sound when a hazard changes state, and keeps the sweeping beams humming.
+function updateHazardSound() {
+  if (hazLevel !== LEVEL) { hazLevel = LEVEL; hazPrev = []; }
+  const audible = actx && state === 'play';
+  let hum = 0, humY = 0;
+  LEVEL.lasers.forEach((l, i) => {
+    const type = l[0];
+    if (type === 'sweep') {
+      const v = clamp(1 - Math.abs(l[1] + l[2] / 2 - boulder.x) / 200, 0, 1);
+      if (v > hum) { hum = v; humY = sweepY(l[3]); }
+      return;
+    }
+    const st = gateState(type === 'synapse' ? l[3] : l[2]);
+    if (audible && hazPrev[i] !== undefined && st !== hazPrev[i] && st !== 'off') {
+      const x = type === 'synapse' ? l[1] + l[2] / 2 : l[1];
+      const v = clamp(1 - Math.abs(x - boulder.x) / 200, 0, 1);
+      if (v > 0.05) HAZARD_SFX[type][st === 'warn' ? 'charge' : 'fire'](v);
+    }
+    hazPrev[i] = st;
+  });
+  if (!actx) return;
+  if (!sweepHum && hum > 0) { // a low hum whose pitch follows the beam up and down
+    const o = actx.createOscillator(), f = actx.createBiquadFilter(), g = actx.createGain();
+    o.type = 'sawtooth'; f.type = 'lowpass'; f.frequency.value = 900; g.gain.value = 0;
+    o.connect(f); f.connect(g); g.connect(master); o.start();
+    sweepHum = { o, g };
+  }
+  if (sweepHum) {
+    sweepHum.o.frequency.setTargetAtTime(140 + (144 - humY) * 4, actx.currentTime, 0.05);
+    sweepHum.g.gain.setTargetAtTime(audible ? 0.03 * hum : 0, actx.currentTime, 0.1);
+  }
+}
+
+// ----- Music: a tiny step sequencer, scheduled a little ahead of time -----
+// Notes are MIDI numbers (60 = middle C); 0 means a rest. `calm` plays on the levels, `boss` during a boss fight.
+const midiHz = (n) => 440 * Math.pow(2, (n - 69) / 12);
+const note = (type, n, dur, vol, t, bus) => beep(midiHz(n), dur, type, vol, 0, t - actx.currentTime, bus);
+const MUSIC = {
+  // Relaxing: C - Am - F - G, 8th notes at 96 bpm. The melody takes a breather every other time through.
+  calm: {
+    step: 60 / 96 / 2, len: 32,
+    roots: [48, 45, 41, 43], tones: [[0, 4, 7], [0, 3, 7], [0, 4, 7], [0, 4, 7]],
+    melody: [
+      [76, 0, 72, 0, 67, 0, 72, 74], [76, 0, 0, 72, 69, 0, 72, 0],
+      [77, 0, 76, 0, 72, 0, 69, 72], [74, 0, 71, 0, 67, 0, 0, 0],
+    ],
+    play(s, t, loop, bus) {
+      const bar = s >> 3, k = s & 7, root = this.roots[bar], tones = this.tones[bar];
+      const bass = { 0: 0, 4: 7, 6: 12 }[k];
+      if (bass !== undefined) note('triangle', root + bass, this.step * 1.8, 0.09, t, bus);
+      note('square', root + 12 + tones[[0, 1, 2, 1, 0, 1, 2, 1][k]], this.step * 0.9, 0.016, t, bus);
+      const m = this.melody[bar][k];
+      if (m && loop % 2 === 0) note('square', m, this.step * 1.8, 0.028, t, bus);
+      if (k === 2 || k === 6) noise('highpass', 7000, 7000, 1, 0.03, 0.012, 0, t - actx.currentTime, bus);
+    },
+  },
+  // Intense: Am - F - G - E, 16th notes at 150 bpm, driving bass, kick and snare.
+  boss: {
+    step: 60 / 150 / 4, len: 64,
+    roots: [45, 41, 43, 40], tones: [[0, 3, 7, 12], [0, 4, 7, 12], [0, 4, 7, 12], [0, 4, 7, 12]],
+    melody: [
+      [81, 0, 81, 0, 84, 0, 81, 0, 79, 0, 76, 0, 79, 0, 81, 0], [77, 0, 77, 0, 81, 0, 77, 0, 76, 0, 72, 0, 76, 0, 77, 0],
+      [79, 0, 79, 0, 83, 0, 79, 0, 74, 0, 79, 0, 83, 0, 86, 0], [83, 0, 83, 0, 80, 0, 83, 0, 76, 0, 80, 0, 83, 0, 0, 0],
+    ],
+    play(s, t, loop, bus) {
+      const bar = s >> 4, k = s & 15, root = this.roots[bar], tones = this.tones[bar], d = t - actx.currentTime;
+      if (k % 2 === 0) note('sawtooth', root + (k === 6 ? 12 : k === 14 ? 7 : 0), this.step * 1.5, 0.05, t, bus);
+      note('square', root + 12 + tones[[0, 1, 2, 3, 2, 1, 2, 1][k & 7]], this.step * 0.8, 0.018, t, bus);
+      const m = this.melody[bar][k];
+      if (m) note('square', m, this.step * 1.8, 0.035, t, bus);
+      if (k % 4 === 0) { beep(160, 0.12, 'sine', 0.2, -120, d, bus); } // kick
+      if (k === 4 || k === 12 || (bar === 3 && k > 12)) noise('bandpass', 1800, 1200, 0.7, 0.09, 0.07, 0, d, bus); // snare (plus a fill at the end)
+      if (k % 4 === 2) noise('highpass', 8000, 8000, 1, 0.03, 0.02, 0, d, bus); // hi-hat
+    },
+  },
+};
+let music = null; // the track that's playing: { name, bus, step, next, loop }
+function startMusic(name) {
+  const now = actx.currentTime;
+  if (music) { // fade the old track out
+    const old = music.bus;
+    old.gain.setTargetAtTime(0, now, 0.05);
+    setTimeout(() => old.disconnect(), 600);
+  }
+  music = null;
+  if (!name) return;
+  const bus = actx.createGain(); bus.connect(master);
+  music = { name, bus, step: 0, next: now + 0.08, loop: 0 };
+}
+function musicTick() {
+  if (!actx || actx.state !== 'running') return;
+  const want = state === 'gameover' ? null : boss && boss.active && !boss.dead ? 'boss' : 'calm';
+  if ((music ? music.name : null) !== want) startMusic(want);
+  if (!music) return;
+  const tr = MUSIC[music.name], now = actx.currentTime;
+  if (music.next < now) music.next = now + 0.02; // we fell behind (hidden tab?): skip ahead instead of rushing
+  while (music.next < now + 0.15) {
+    tr.play(music.step, music.next, music.loop, music.bus);
+    music.next += tr.step;
+    if (++music.step >= tr.len) { music.step = 0; music.loop++; }
+  }
+}
 
 // Confetti colors when you squish someone, by kind of person.
 const SQUISH_COLORS = {
@@ -831,6 +1016,7 @@ function updateFx() {
 function update() {
   frame++;
   if (menuOpen) { input.jumpPressed = false; return; } // the level picker pauses the game
+  updateHazardSound();
   if (state === 'play') {
     if (deadTimer > 0) {
       deadTimer--;
@@ -1666,6 +1852,7 @@ function draw() {
   // HUD
   text('SQUISHED ' + squished + '/' + LEVEL.people.length, 6, 12);
   text('LEVEL ' + (levelIndex + 1), W / 2, 12, '#ffd23f', 'center');
+  text(muted ? 'SOUND OFF (M)' : 'SOUND ON (M)', 6, 22, muted ? '#ff9a9a' : '#aaa', 'left', 6);
   drawBossHud();
   if (hasKey && !ending) drawKey(W - 14, 26); // the key you're carrying
   text('LIVES ' + Math.max(0, lives), W - 6, 12, '#ffb3b3', 'right');
