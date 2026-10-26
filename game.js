@@ -135,7 +135,15 @@ const LEVELS = [{
   ],
   checkpoints: [790, 1600, 2490, 3010],
   // the underground part: camera scrolls down to follow you in; baby rock starts in the cage
-  underground: { x0: 3200, maxCamY: 100, floorY: 236, babyX: 3243, chamberX: 3228, chamberW: 56, tunnelY: 212 },
+  // lines: what each speech bubble says, in order (who: 'boulder' or 'baby'; time: frames before it moves on)
+  underground: {
+    x0: 3200, maxCamY: 100, floorY: 236, babyX: 3243, chamberX: 3228, chamberW: 56, tunnelY: 212, babyR: 6, smashHint: 'sand',
+    lines: [
+      { who: 'boulder', text: "I'm so glad I freed you!", time: 170 },
+      { who: 'baby', text: 'Ah goo a gah!', time: 130 },
+      { who: 'boulder', text: 'We need to get out of here before more stuff chases us!', time: 230 },
+    ],
+  },
   // The Giant Knight. The fight starts when you cross arenaLeft; the camera then locks onto the arena.
   // zoneMin/zoneMax is how far he can walk (between the two ledges). No goalX: beating the boss wins the level.
   boss: { name: 'THE GIANT KNIGHT', x: 3254, hp: 3, arenaLeft: 3092, camX: 3080, zoneMin: 3202, zoneMax: 3306 },
@@ -143,7 +151,15 @@ const LEVELS = [{
   name: 'BRAINTOPIA', theme: 'brain', kind: 'brain', hint: 'Squish the little brains. Dodge the zaps!',
   width: 3400,
   solids: [
-    [0, GROUND_Y, 640, 30], [690, GROUND_Y, 560, 30], [1305, GROUND_Y, 700, 30], [2060, GROUND_Y, 520, 30], [2630, GROUND_Y, 770, 30],
+    [0, GROUND_Y, 640, 30], [690, GROUND_Y, 560, 30], [1305, GROUND_Y, 700, 30], [2060, GROUND_Y, 520, 30],
+    // The arena floor, same layout as the castle's: smashable bones, a locked floor made of bones, then a chamber with the
+    // baby pebble in a bone cage and a tunnel out.
+    [2630, GROUND_Y, 598, 150],
+    [3228, GROUND_Y, 56, 16, 'sand'],              // smashable pile of bones (type 'sand' is "smashable")
+    [3228, 166, 56, 12, 'brick'],                  // locked floor of bones (the key opens it)
+    [3284, GROUND_Y, 116, 62],
+    [3228, 236, 372, 64],
+    [3231, 212, 24, 24, 'cage'],                   // the bone cage holding the baby pebble
     // platforms and steps
     [360, 112, 80, 8], [900, 108, 80, 8], [1700, 132, 30, 18], [1730, 114, 30, 36], [2320, 110, 70, 8],
     // boss arena (same shape as the castle's): a ledge on each side to leap from, and a wall at the end
@@ -170,6 +186,18 @@ const LEVELS = [{
   boss: {
     name: 'THE BIG BRAIN', type: 'brain', x: 3254, hp: 3, arenaLeft: 3092, camX: 3080, zoneMin: 3214, zoneMax: 3294, hitW: 24,
     tip: 'Land on its brain from above! Dodge the zaps!', colors: ['#ff9ec4', '#ffffff', '#c9a2ff', '#7df0ff'],
+  },
+  underground: {
+    x0: 3200, maxCamY: 100, floorY: 236, babyX: 3243, chamberX: 3228, chamberW: 56, tunnelY: 212, babyR: 4, smashHint: 'bones',
+    lines: [
+      { who: 'boulder', text: 'My sweet baby pebble! You\'re alive!', time: 170 },
+      { who: 'baby', text: 'Yes - and quite cozy, given the warmth provided by the electrical synapses!', time: 230 },
+      { who: 'boulder', text: '...What?!', time: 110 },
+      { who: 'baby', text: 'Oh, sorry - Electrical synapses occur when neurons connect and transmit a nearly instantaneous burst of ions through protein channels called gap junctions.', time: 420 },
+      { who: 'boulder', text: '...You can talk?!', time: 120 },
+      { who: 'baby', text: '...goo goo ga ga?', time: 130 },
+      { who: 'boulder', text: 'We gotta get out of here...', time: 170 },
+    ],
   },
 }];
 
@@ -366,7 +394,7 @@ function resetRun() {
   boss = LEVEL.boss ? { hp: LEVEL.boss.hp, dead: false } : null;
   solids = LEVEL.solids.map((sd) => sd.slice()); // a copy, because smashing and unlocking remove pieces
   hasKey = false; key = null; ending = null; camY = 0; shake = 0; lockedHint = 0;
-  baby = LEVEL.underground ? { x: LEVEL.underground.babyX, y: LEVEL.underground.floorY - 6, vx: 0, vy: 0, rot: 0, free: false } : null;
+  baby = LEVEL.underground ? { x: LEVEL.underground.babyX, y: LEVEL.underground.floorY - LEVEL.underground.babyR, vx: 0, vy: 0, rot: 0, free: false } : null;
   respawn();
 }
 function respawn() {
@@ -452,8 +480,9 @@ const bossWall = () => [LEVEL.boss.arenaLeft - 16, 0, 12, GROUND_Y]; // drops be
 // Smashable pieces of level are solids with a 5th entry, 'sand'. Smashing one removes it.
 function smashSolid(sd) {
   solids = solids.filter((o) => o !== sd);
-  spawnBurst(sd[0] + sd[2] / 2, sd[1] + 2, ['#e3c276', '#f0d890', '#c9a75a', '#ffffff'], 26, 2);
-  spawnBurst(boulder.x, sd[1], ['#e3c276', '#f0d890'], 12, 1.6);
+  const bones = LEVEL.theme === 'brain';
+  spawnBurst(sd[0] + sd[2] / 2, sd[1] + 2, bones ? ['#f4efe0', '#d8d0b8', '#b8ae94', '#ffffff'] : ['#e3c276', '#f0d890', '#c9a75a', '#ffffff'], 26, 2);
+  spawnBurst(boulder.x, sd[1], bones ? ['#f4efe0', '#d8d0b8'] : ['#e3c276', '#f0d890'], 12, 1.6);
   shake = 10; beep(120, 0.3, 'sawtooth', 0.07, -70);
   floaters.push({ x: sd[0] + sd[2] / 2, y: sd[1] - 12, text: 'SMASH!', life: 40 });
 }
@@ -695,13 +724,6 @@ function updateKey() {
   }
 }
 
-// What each speech bubble says, in order. who: 'boulder' or 'baby'.
-const ENDING_LINES = [
-  { who: 'boulder', text: "I'm so glad I freed you!", time: 170 },
-  { who: 'baby', text: 'Ah goo a gah!', time: 130 },
-  { who: 'boulder', text: 'We need to get out of here before more stuff chases us!', time: 230 },
-];
-
 function startEnding() {
   const u = LEVEL.underground, lockX = 3228 + 28;
   ending = {
@@ -741,9 +763,9 @@ function updateEnding() {
     if (e.t > 30) e.cageOpen = Math.min(1, (e.t - 30) / 30);
     if (e.t === 62) { baby.free = true; baby.vy = -2.6; sfx.checkpoint(); next('talk'); }
   } else if (e.step === 'talk') {
-    const line = ENDING_LINES[e.line];
+    const line = u.lines[e.line];
     if (line.who === 'baby' && e.t % 34 === 2) baby.vy = -2.2; // the baby hops while it talks
-    if (e.t > line.time || (skip && e.t > 25)) { e.line++; e.t = 0; if (e.line >= ENDING_LINES.length) next('rollOut'); }
+    if (e.t > line.time || (skip && e.t > 25)) { e.line++; e.t = 0; if (e.line >= u.lines.length) next('rollOut'); }
   } else if (e.step === 'rollOut') { // both roll off to the right through the tunnel
     c.right = true;
     if (e.t > 12) baby.vx = Math.min(TUNE.maxSpeed, baby.vx + 0.2);
@@ -753,7 +775,7 @@ function updateEnding() {
 
 function updateBaby() {
   if (!baby) return;
-  const floor = LEVEL.underground.floorY - 6;
+  const floor = LEVEL.underground.floorY - LEVEL.underground.babyR;
   if (baby.free) { baby.vy += TUNE.gravity; baby.y += baby.vy; baby.x += baby.vx; }
   if (baby.y >= floor) { baby.y = floor; baby.vy = 0; }
   baby.rot += baby.vx / 6;
@@ -959,7 +981,24 @@ const SOLID_STYLE = {
   },
 };
 
+// A bone: a shaft with a knob on each end
+function bone(x, y, len, vertical) {
+  const c = '#f4efe0', sh = '#c9c0a4';
+  if (vertical) { px(x, y + 1, 3, len - 2, c); px(x + 2, y + 1, 1, len - 2, sh); px(x - 1, y, 2, 2, c); px(x + 2, y, 2, 2, c); px(x - 1, y + len - 2, 2, 2, c); px(x + 2, y + len - 2, 2, 2, c); }
+  else { px(x + 1, y, len - 2, 3, c); px(x + 1, y + 2, len - 2, 1, sh); px(x, y - 1, 2, 2, c); px(x, y + 2, 2, 2, c); px(x + len - 2, y - 1, 2, 2, c); px(x + len - 2, y + 2, 2, 2, c); }
+}
+
+// The smashable pile of bones in Braintopia (same job as the sand)
+function drawBonePile(sx, y, w, h) {
+  px(sx, y, w, h, '#d8d0b8');
+  for (let i = 0; i < w; i += 14) { bone(sx + 1 + i, y + 2 + ((i / 14) % 2) * 5, 12, false); }
+  for (let i = 0; i < w; i += 14) { bone(sx + 7 + i, y + 8 + ((i / 14) % 2) * -3, 10, false); }
+  px(sx + 6, y + 1, 3, 3, '#f4efe0'); px(sx + 7, y + 2, 1, 1, '#2a2238'); px(sx + 20, y + 2, 1, 1, '#2a2238'); // a tiny skull peeks out
+  px(sx, y + h - 1, w, 1, '#b8ae94');
+}
+
 function drawSand(sx, y, w, h) {
+  if (LEVEL.theme === 'brain') return drawBonePile(sx, y, w, h);
   px(sx, y, w, h, '#e3c276');
   for (let i = 0; i < w; i += 4) px(sx + i, y, 4, 2 + ((i / 4) % 2), '#f0d890'); // bumpy top
   for (let i = 0; i < w; i += 3) for (let j = 4; j < h; j += 5) if ((i * 5 + j * 11) % 7 < 2) px(sx + i, y + j, 1, 1, '#c9a75a');
@@ -968,9 +1007,15 @@ function drawSand(sx, y, w, h) {
 
 // The locked floor under the sand: two brick halves with a padlock. When the key opens it they slide apart into the walls.
 function drawBrick(sx, y, w, h) {
+  const boneFloor = LEVEL.theme === 'brain';
   const p = ending ? ending.floorOpen : 0, half = w / 2, slide = Math.round(p * half);
   ctx.save(); ctx.beginPath(); ctx.rect(sx, y, w, h); ctx.clip(); // the halves vanish into the walls, not over them
   const bricks = (x0, w0) => {
+    if (boneFloor) { // the locked floor is a layer of bones laid side by side
+      px(x0, y, w0, h, '#8f866c');
+      for (let r = 0; r < 2; r++) for (let k = (r % 2) * 6; k < w0; k += 12) bone(x0 + k, y + 2 + r * 5, 12, false);
+      return;
+    }
     px(x0, y, w0, h, '#8a4f3b'); px(x0, y, w0, 1, '#b06a52');
     for (let r = 0; r < 3; r++) {
       px(x0, y + 4 + r * 4 - 1, w0, 1, '#4a2a22');
@@ -1037,7 +1082,8 @@ function drawCavity() {
   const u = LEVEL.underground;
   if (!u) return;
   const sx = Math.round(u.chamberX - camX);
-  px(sx, 178, u.chamberW, u.floorY - 178, '#120e1a'); px(sx + u.chamberW, u.tunnelY, 130, u.floorY - u.tunnelY, '#120e1a');
+  const dark = LEVEL.theme === 'brain' ? '#1c0a22' : '#120e1a';
+  px(sx, 178, u.chamberW, u.floorY - 178, dark); px(sx + u.chamberW, u.tunnelY, 130, u.floorY - u.tunnelY, dark);
   for (let y = 182; y < u.floorY; y += 8) for (let x = sx + ((y / 8) % 2) * 6; x < sx + u.chamberW; x += 12) px(x, y, 1, 8, '#1d1727');
   for (let y = 186; y < u.floorY; y += 8) px(sx, y, u.chamberW, 1, '#1d1727');
   disc(sx + 28, 205, 26, 'rgba(255,170,80,0.05)'); // faint warm light
@@ -1054,11 +1100,16 @@ function drawKey(x, y) {
 
 function drawBaby() {
   if (!baby) return;
-  const x = Math.round(baby.x - camX), y = Math.round(baby.y), r = 6;
+  const x = Math.round(baby.x - camX), y = Math.round(baby.y), r = LEVEL.underground.babyR;
   if (x < -20 || x > W + 20) return;
   disc(x, y, r + 1, '#3a3a46'); disc(x, y, r, '#b9b9cc');
-  for (let i = 0; i < 3; i++) { const a = baby.rot + i * 2.1; px(x + Math.cos(a) * 3, y + Math.sin(a) * 3, 1, 1, '#8b8ba0'); }
+  for (let i = 0; i < 3; i++) { const a = baby.rot + i * 2.1; px(x + Math.cos(a) * r / 2, y + Math.sin(a) * r / 2, 1, 1, '#8b8ba0'); }
   px(x - 1, y - r - 2, 1, 2, '#7fcf86'); px(x + 1, y - r - 3, 1, 3, '#7fcf86'); // a little tuft of baby grass
+  if (r < 6) { // a smaller baby: smaller face
+    px(x - 2, y - 2, 2, 2, '#fff'); px(x + 1, y - 2, 2, 2, '#fff'); px(x - 1, y - 1, 1, 1, '#111'); px(x + 2, y - 1, 1, 1, '#111');
+    px(x, y + 1, 1, 1, '#111'); px(x - 3, y + 1, 1, 1, '#ffb3c8'); px(x + 3, y + 1, 1, 1, '#ffb3c8');
+    return;
+  }
   px(x - 3, y - 2, 2, 3, '#fff'); px(x + 1, y - 2, 2, 3, '#fff'); px(x - 2, y - 1, 1, 2, '#111'); px(x + 2, y - 1, 1, 2, '#111'); // big eyes
   px(x - 1, y + 2, 2, 1, '#111');
   px(x - 5, y + 1, 2, 1, '#ffb3c8'); px(x + 4, y + 1, 2, 1, '#ffb3c8'); // blushing cheeks
@@ -1070,8 +1121,13 @@ function drawCage() {
   const p = ending ? ending.cageOpen : 0;
   if (p >= 1) return;
   const x = Math.round(3231 - camX), y = 212 - Math.round(p * 28), w = 24, h = 24;
-  for (let i = 0; i < w; i += 5) px(x + i, y, 2, h, '#9aa3bd');
-  px(x - 1, y, w + 2, 3, '#6a728c'); px(x - 1, y + h - 2, w + 2, 2, '#6a728c');
+  if (LEVEL.theme === 'brain') { // a cage of bones
+    for (let i = 1; i < w; i += 6) bone(x + i, y + 2, h - 4, true);
+    bone(x - 1, y - 1, w + 2, false); bone(x - 1, y + h - 3, w + 2, false);
+  } else {
+    for (let i = 0; i < w; i += 5) px(x + i, y, 2, h, '#9aa3bd');
+    px(x - 1, y, w + 2, 3, '#6a728c'); px(x - 1, y + h - 2, w + 2, 2, '#6a728c');
+  }
   if (!ending || ending.step !== 'cageUnlock' || ending.t < 26) { // the cage's padlock
     px(x + w - 6, y + 9, 7, 6, '#ffd23f'); px(x + w - 5, y + 7, 5, 2, '#b8860b'); px(x + w - 3, y + 11, 1, 2, '#3b2a18');
   }
@@ -1457,7 +1513,7 @@ function draw() {
   LEVEL.decor.forEach(drawDecor);
   LEVEL.checkpoints.forEach((cp) => drawFlag(cp, spawnX >= cp ? '#4fe36b' : '#999'));
   if (LEVEL.goalX) drawFlag(LEVEL.goalX, '#ffd23f');
-  if (LEVEL.underground) { // red carpet into the arena (not over the sand patch)
+  if (LEVEL.underground && LEVEL.theme === 'castle') { // red carpet into the arena (not over the sand patch)
     px(LEVEL.boss.arenaLeft - 12 - camX, GROUND_Y - 1, 3228 - LEVEL.boss.arenaLeft + 12, 1, '#a3212e');
     px(3284 - camX, GROUND_Y - 1, 108, 1, '#a3212e');
   }
@@ -1489,11 +1545,11 @@ function draw() {
 
   if (state === 'play' && boss && boss.dead && !ending) {
     const msg = lockedHint > 0 ? 'LOCKED! You need the key.' : key && !key.taken ? 'Grab the key!'
-      : hasKey && solids.some((sd) => sd[4] === 'sand') ? 'Jump, then press DOWN to smash the sand!' : '';
+      : hasKey && solids.some((sd) => sd[4] === 'sand') ? 'Jump, then press DOWN to smash the ' + LEVEL.underground.smashHint + '!' : '';
     if (msg) text(msg, W / 2, 58, '#ffd23f', 'center', 8);
   }
   if (ending && ending.step === 'talk') {
-    const line = ENDING_LINES[ending.line];
+    const line = LEVEL.underground.lines[ending.line];
     if (line.who === 'baby') drawBubble(baby.x, baby.y - 8, line.text, true);
     else drawBubble(boulder.x, boulder.y - TUNE.radius, line.text, false);
   }

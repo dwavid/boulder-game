@@ -20,6 +20,7 @@
 - [x] Level 3 ending: the boss drops a key, smash the sand, unlock the brick floor and cage, free the baby rock, and roll off together
 - [x] Portrait mode on phones: tall, narrow view with the buttons underneath (landscape unchanged)
 - [x] Level 4: Braintopia (inside a brain: little brains instead of people, blinking synapse zaps, and the Big Brain boss who calls down lightning columns)
+- [x] Level 4 ending: the Big Brain drops a key, smash the pile of bones, unlock the bone floor and bone cage, free an even smaller baby pebble (who talks about synapses)
 - [x] Level progression: beat a level to unlock the next; game over retries the same level
 
 ## Ideas backlog (add yours here!)
