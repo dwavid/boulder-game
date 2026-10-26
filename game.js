@@ -271,7 +271,7 @@ addEventListener('resize', layout);
 addEventListener('orientationchange', layout);
 
 // ---------- Input ----------
-const input = { left: false, right: false, jump: false, jumpPressed: false, down: false, downPressed: false };
+const input = { left: false, right: false, jump: false, jumpPressed: false, dirPressed: false, down: false, downPressed: false };
 const keyMap = {
   ArrowLeft: 'left', a: 'left', A: 'left',
   ArrowRight: 'right', d: 'right', D: 'right',
@@ -281,6 +281,7 @@ const keyMap = {
 function setInput(name, down) {
   if (name === 'jump' && down && !input.jump) input.jumpPressed = true;
   if (name === 'down' && down && !input.down) input.downPressed = true;
+  if ((name === 'left' || name === 'right') && down && !input[name]) input.dirPressed = true; // arrows also advance dialogue
   input[name] = down;
 }
 addEventListener('keydown', (e) => {
@@ -744,7 +745,7 @@ function updateEnding() {
   const e = ending, b = boulder, u = LEVEL.underground, c = e.ctrl;
   e.t++;
   const next = (step) => { e.step = step; e.t = 0; };
-  const skip = input.jumpPressed; input.jumpPressed = false; // jump/tap speeds up dialogue
+  const skip = input.jumpPressed || input.dirPressed; input.jumpPressed = input.dirPressed = false; // jump/arrow/tap advances dialogue
   if (e.step === 'unlockFloor') {
     flyKey(e.key, e.lockX, 172, 0.12);
     if (e.t === 28) { // click! the lock pops
@@ -768,7 +769,7 @@ function updateEnding() {
   } else if (e.step === 'talk') {
     const line = u.lines[e.line];
     if (line.who === 'baby' && e.t % 34 === 2) baby.vy = -2.2; // the baby hops while it talks
-    if (e.t > line.time || (skip && e.t > 25)) { e.line++; e.t = 0; if (e.line >= u.lines.length) next('rollOut'); }
+    if (skip && e.t > 15) { e.line++; e.t = 0; if (e.line >= u.lines.length) next('rollOut'); }
   } else if (e.step === 'rollOut') { // both roll off to the right through the tunnel
     c.right = true;
     if (e.t > 12) baby.vx = Math.min(TUNE.maxSpeed, baby.vx + 0.2);
