@@ -199,6 +199,30 @@ const LEVELS = [{
       { who: 'boulder', text: 'We gotta get out of here...', time: 170 },
     ],
   },
+}, {
+  name: 'WATERTOPIA', theme: 'water', kind: 'monster', hint: 'Squish the water monsters. Dodge the hot vents!',
+  width: 3100,
+  solids: [
+    [0, GROUND_Y, 640, 30], [690, GROUND_Y, 560, 30], [1305, GROUND_Y, 700, 30], [2060, GROUND_Y, 520, 30], [2635, GROUND_Y, 465, 30],
+    // coral platforms and steps
+    [360, 112, 80, 8], [900, 108, 80, 8], [1700, 132, 30, 18], [1730, 114, 30, 36], [2320, 110, 70, 8],
+  ],
+  // hydrothermal vents (in the lasers list): ['vent', x, phase] bubbles (off), glows orange (warning), then shoots a column
+  // of scalding water far too tall to jump over (deadly). Wait for it to go off, then roll across.
+  lasers: [
+    ['vent', 230, 0], ['vent', 520, 100], ['vent', 800, 40], ['vent', 1100, 120], ['vent', 1400, 60],
+    ['vent', 1580, 160], ['vent', 1850, 20], ['vent', 2150, 80], ['vent', 2480, 140], ['vent', 2750, 30], ['vent', 2900, 110],
+  ],
+  // little water monsters: [x, floorY, walkMin, walkMax]
+  people: [
+    [150, GROUND_Y, 100, 200], [400, GROUND_Y, 330, 480], [385, 112, 365, 435], [600, GROUND_Y, 560, 630],
+    [740, GROUND_Y, 700, 780], [940, 108, 905, 975], [900, GROUND_Y, 860, 1020], [1160, GROUND_Y, 1110, 1230],
+    [1330, GROUND_Y, 1320, 1360], [1500, GROUND_Y, 1450, 1540], [1650, GROUND_Y, 1620, 1690], [1745, 114, 1738, 1752],
+    [1950, GROUND_Y, 1900, 1990], [2110, GROUND_Y, 2070, 2130], [2355, 110, 2325, 2385], [2300, GROUND_Y, 2240, 2420],
+    [2540, GROUND_Y, 2500, 2570], [2680, GROUND_Y, 2650, 2720], [2830, GROUND_Y, 2790, 2870], [2980, GROUND_Y, 2940, 3060],
+  ],
+  checkpoints: [725, 1330, 2080, 2670],
+  goalX: 3030,
 }];
 
 // Scenery scattered on solid ground; drawn behind everything.
@@ -206,6 +230,7 @@ const DECOR_KINDS = {
   night: ['stone', 'cross', 'tree', 'stone', 'fence'],
   castle: ['barrel', 'brazier', 'crate', 'barrel', 'crate'],
   brain: ['neuron', 'coil', 'sprout', 'coil', 'neuron'],
+  water: ['seaweed', 'coral', 'shell', 'seaweed', 'coral'],
 };
 function genDecor(level) {
   const out = [];
@@ -365,6 +390,7 @@ const SQUISH_COLORS = {
   zombie: ['#9be07a', '#eaeaea', '#c9b8ff'],
   knight: ['#c8d2e6', '#ffffff', '#e8303a'],
   brain: ['#ff9ec4', '#ffffff', '#c9a2ff', '#8fd8ff'],
+  monster: ['#5de0c4', '#ffffff', '#7ab8ff', '#c9f5ff'],
 };
 
 // ---------- Game state ----------
@@ -375,7 +401,7 @@ let boulder, people, ghosts, boss, bossIntro = 0, solids, hasKey, key, ending, b
 function walkLimits(x, floorY, min, max) {
   const blocks = [
     ...LEVEL.spikes,
-    ...LEVEL.lasers.map((l) => (l[0] === 'gate' ? [l[1] - 4, 8] : [l[1], l[2]])),
+    ...LEVEL.lasers.map((l) => (l[0] === 'gate' ? [l[1] - 4, 8] : l[0] === 'vent' ? [l[1] - 6, 12] : [l[1], l[2]])),
   ];
   for (const [sx, sw, sy = GROUND_Y] of blocks) {
     if (sy !== floorY || sx + sw < min || sx > max) continue;
@@ -465,11 +491,13 @@ function gateState(phase, ahead = 0) {
   const t = (frame + ahead + phase) % TUNE.gateCycle;
   return t >= TUNE.gateOnAt ? 'on' : t >= TUNE.gateWarnAt ? 'warn' : 'off';
 }
+const VENT_TOP = 66; // a hot-water column reaches up to this y (a jump only lifts the boulder's bottom to ~y98), so you can't hop over it
 const sweepY = (phase, ahead = 0) => 117 + Math.sin((frame + ahead + phase) * TUNE.sweepSpeed) * 27;
 
 function laserHits(l, cx, cy, r) {
   if (l[0] === 'gate') return gateState(l[2]) === 'on' && hitsCircleRect(cx, cy, r, l[1] - 2, 14, 5, GROUND_Y - 14);
   if (l[0] === 'synapse') return gateState(l[3]) === 'on' && hitsCircleRect(cx, cy, r, l[1] - 2, 132, l[2] + 4, GROUND_Y - 132);
+  if (l[0] === 'vent') return gateState(l[2]) === 'on' && hitsCircleRect(cx, cy, r, l[1] - 5, VENT_TOP, 10, GROUND_Y - VENT_TOP);
   return hitsCircleRect(cx, cy, r, l[1], sweepY(l[3]) - 2, l[2], 4);
 }
 
@@ -852,7 +880,27 @@ function disc(cx, cy, r, c) {
 const hillH = (wx) => 28 + Math.sin(wx * 0.02) * 10 + Math.sin(wx * 0.047) * 5;
 
 function drawBackground() {
-  ({ day: drawDayBackground, night: drawNightBackground, castle: drawCastleBackground, brain: drawBrainBackground })[LEVEL.theme]();
+  ({ day: drawDayBackground, night: drawNightBackground, castle: drawCastleBackground, brain: drawBrainBackground, water: drawWaterBackground })[LEVEL.theme]();
+}
+
+// Under the sea: deep blue water, light rays from the surface, drifting seaweed and fish silhouettes, rising bubbles.
+function drawWaterBackground() {
+  ['#0a3a66', '#0c4a80', '#0e5a96', '#1068a8'].forEach((c, i) => px(0, i * 38, W, 38, c));
+  repeating(110, 0.2, (sx, i) => { // slanted light rays
+    for (let y = 0; y < 120; y += 4) px(sx + y * 0.35 + (i % 3) * 8, y, 14 - y / 14, 4, 'rgba(160,230,255,0.06)');
+  });
+  repeating(90, 0.35, (sx, i) => { // far-away seaweed
+    const h = 26 + ((i * 7) % 5) * 5;
+    for (let y = 0; y < h; y += 2) px(sx + Math.sin(frame * 0.03 + y * 0.2 + i) * 3, GROUND_Y - y, 3, 2, '#0b4a6a');
+  });
+  for (let i = 0; i < 4; i++) { // fish swimming by
+    const dir = i % 2 ? -1 : 1, x = (((i * 140 + dir * frame * 0.4 - camX * 0.5) % (W + 60)) + (W + 60)) % (W + 60) - 30, y = 24 + i * 22;
+    px(x, y, 8, 3, '#0a3256'); px(dir > 0 ? x - 3 : x + 8, y - 1, 3, 5, '#0a3256');
+  }
+  for (let i = 0; i < 16; i++) { // bubbles rising
+    const x = (((i * 71 - camX * 0.8) % W) + W) % W, y = WORLD_H - ((frame * (0.25 + (i % 3) * 0.1) + i * 29) % WORLD_H);
+    px(x + Math.sin(frame * 0.05 + i) * 2, y, 2, 2, 'rgba(200,240,255,0.4)');
+  }
 }
 
 function drawNightBackground() {
@@ -983,6 +1031,10 @@ const SOLID_STYLE = {
     ground: ['#b24a72', '#8f3a5e', '#ff8fb3', '#d9608a'],
     stone: ['#7d4fa8', '#5f3a85', '#b58ae0', '#9467c4'],
   },
+  water: {
+    ground: ['#3a6f8c', '#2c5873', '#e6d29a', '#c3b078'], // seabed with a sandy top
+    stone: ['#d9667a', '#b84a62', '#ff9aa8', '#e07388'], // coral
+  },
 };
 
 // A bone: a shaft with a knob on each end
@@ -1061,8 +1113,8 @@ function drawPits() {
   for (let i = 0; i < ground.length - 1; i++) {
     const a = ground[i][0] + ground[i][2], w = ground[i + 1][0] - a, sx = Math.round(a - camX);
     if (sx > W || sx + w < 0) continue;
-    px(sx, GROUND_Y, w, WORLD_H - GROUND_Y, { day: '#24150d', night: '#04020a', castle: '#0a0508', brain: '#10031a' }[theme]);
-    const hot = { castle: '255,100,40', brain: '90,210,255' }[theme]; // castle: red-hot dungeon pit; brain: crackling blue void
+    px(sx, GROUND_Y, w, WORLD_H - GROUND_Y, { day: '#24150d', night: '#04020a', castle: '#0a0508', brain: '#10031a', water: '#030c18' }[theme]);
+    const hot = { castle: '255,100,40', brain: '90,210,255', water: '255,120,50' }[theme]; // castle: red-hot dungeon pit; brain: crackling blue void; water: glowing trench
     if (hot) { // not animated, but easy to see
       for (let k = 0; k < 4; k++) px(sx, WORLD_H - 16 + k * 4, w, 4, `rgba(${hot},${0.12 + k * 0.1})`);
       for (let k = 0; k < 4; k++) px(sx, GROUND_Y - 12 + k * 3, w, 3, `rgba(${hot},${0.04 + k * 0.04})`);
@@ -1193,6 +1245,13 @@ function drawDecor([x, kind]) {
     for (let k = 0; k < 14; k++) px(sx - 7 + k, y - 4 + Math.round(Math.sin(k * 0.9) * 2), 1, 2, '#e8607f');
   } else if (kind === 'sprout') {
     px(sx, y - 7, 1, 7, '#6fcf86'); px(sx - 3, y - 7, 3, 2, '#8fe3a0'); px(sx + 1, y - 9, 3, 2, '#8fe3a0');
+  } else if (kind === 'seaweed') {
+    for (let k = 0; k < 14; k += 2) px(sx - 1 + Math.round(Math.sin(frame * 0.05 + k * 0.5 + x) * 2), y - k, 3, 2, '#2fb36b');
+  } else if (kind === 'coral') {
+    px(sx - 1, y - 8, 3, 8, '#ff7a8a'); px(sx - 4, y - 11, 2, 6, '#ff7a8a'); px(sx - 4, y - 6, 4, 2, '#ff7a8a'); px(sx + 2, y - 10, 2, 5, '#ff7a8a'); px(sx + 2, y - 6, 3, 2, '#ff7a8a');
+    px(sx - 1, y - 8, 1, 7, '#ffb3bd');
+  } else if (kind === 'shell') {
+    px(sx - 4, y - 5, 8, 5, '#f6d9e6'); px(sx - 3, y - 6, 6, 1, '#f6d9e6'); px(sx - 2, y - 5, 1, 5, '#d9a8c0'); px(sx + 1, y - 5, 1, 5, '#d9a8c0'); px(sx - 4, y - 1, 8, 1, '#d9a8c0');
   } else if (kind === 'fence') {
     for (let k = 0; k < 4; k++) { px(sx - 8 + k * 5, y - 8, 2, 8, '#35304a'); px(sx - 8 + k * 5, y - 10, 2, 2, '#35304a'); }
     px(sx - 8, y - 6, 17, 1, '#35304a'); px(sx - 8, y - 3, 17, 1, '#35304a');
@@ -1254,7 +1313,44 @@ function drawLittleBrain(p) {
   if (p.scared) { px(x - 6, y - 9 - step, 1, 3, BRAIN_COLORS[p.hue]); px(x + 6, y - 9 - step, 1, 3, BRAIN_COLORS[p.hue]); px(x - 1, y - 5, 2, 1, '#222'); }
 }
 
-const DRAW_PERSON = { person: drawPerson, zombie: drawZombie, knight: drawKnight, brain: drawLittleBrain };
+// A little water monster: a gooey teal blob with a fin on top, one big eye or two, and wiggly tentacle feet.
+const MONSTER_COLORS = ['#5de0c4', '#7ab8ff', '#c79bff', '#ffb36b', '#8fe36b'];
+function drawWaterMonster(p) {
+  const x = Math.round(p.x - camX), y = Math.round(p.floorY);
+  if (x < -10 || x > W + 10) return;
+  const step = Math.floor(frame / (p.scared ? 4 : 10)) % 2, c = MONSTER_COLORS[p.hue], dark = 'rgba(0,40,80,0.35)';
+  px(x - 3, y - 3, 1, 3 - step, c); px(x - 1, y - 3, 1, 2 + step, c); px(x + 1, y - 3, 1, 3 - step, c); px(x + 3, y - 3, 1, 2 + step, c); // tentacles
+  ellipse(x, y - 7, 5, 4, c);
+  px(x - 5, y - 6, 10, 3, c); px(x - 4, y - 4, 8, 1, dark); // jelly-like belly
+  px(x - 1, y - 13, 2, 2, c); px(x - 2, y - 12, 4, 1, c); px(x, y - 14, 1, 1, c); // fin
+  px(x - 3, y - 8, 3, 3, '#fff'); px(x + 1, y - 8, 3, 3, '#fff'); px(x - 2, y - 7, 1, 2, '#123'); px(x + 2, y - 7, 1, 2, '#123'); // eyes
+  if (p.scared) { px(x - 7, y - 9 - step, 2, 3, c); px(x + 6, y - 9 - step, 2, 3, c); px(x - 1, y - 4, 2, 1, '#123'); }
+}
+
+const DRAW_PERSON = { person: drawPerson, zombie: drawZombie, knight: drawKnight, brain: drawLittleBrain, monster: drawWaterMonster };
+
+// Hydrothermal vent: a rocky chimney on the seabed. Off: lazy bubbles. Warn: glows orange and rumbles. On: a scalding column.
+function drawVent([, x, phase]) {
+  const sx = Math.round(x - camX), st = gateState(phase);
+  if (sx < -20 || sx > W + 20) return;
+  const mouth = GROUND_Y - 9;
+  if (st === 'on') {
+    const flick = frame % 4 < 2 ? 0.34 : 0.26;
+    px(sx - 5, VENT_TOP, 11, mouth - VENT_TOP, `rgba(255,140,60,${flick})`); // hugs the hitbox in laserHits
+    px(sx - 2, VENT_TOP, 5, mouth - VENT_TOP, `rgba(255,220,150,${flick + 0.3})`);
+    for (let k = 0; k < 9; k++) { // streaks of hot water racing up
+      const y = mouth - ((frame * 4 + k * 17) % (mouth - VENT_TOP));
+      px(sx - 3 + ((k * 5) % 7), y, 1, 4, '#fff6d8');
+    }
+  } else if (st === 'warn') {
+    disc(sx, mouth - 2, 8, 'rgba(255,140,60,0.35)');
+    for (let k = 0; k < 4; k++) px(sx - 3 + ((frame + k * 5) % 7), mouth - 4 - ((frame * 2 + k * 9) % 22), 2, 2, '#ffb36b');
+  } else {
+    for (let k = 0; k < 3; k++) px(sx - 1 + Math.round(Math.sin(frame * 0.1 + k * 2) * 2), mouth - 3 - ((frame * 0.6 + k * 14) % 34), 2, 2, 'rgba(210,240,255,0.55)');
+  }
+  px(sx - 8, GROUND_Y - 3, 17, 3, '#2a3a4a'); px(sx - 6, GROUND_Y - 6, 13, 3, '#34485c'); px(sx - 4, GROUND_Y - 9, 9, 3, '#3f566d'); // the chimney
+  px(sx - 3, mouth, 7, 1, { off: '#1a2530', warn: '#ff9a30', on: '#fff0b0' }[st]);
+}
 
 // Synapse: two neurons with an electric arc that jumps between them (off: faint glow, warn: yellow sparks, on: deadly).
 function drawSynapse([, x, w, phase]) {
@@ -1297,6 +1393,7 @@ function drawLaser(l) {
     return;
   }
   if (l[0] === 'synapse') return drawSynapse(l);
+  if (l[0] === 'vent') return drawVent(l);
   const [, x, w, phase] = l, sx = Math.round(x - camX), y = Math.round(sweepY(phase));
   if (sx > W + 10 || sx + w < -10) return;
   px(sx - 1, 84, 2, GROUND_Y - 84, '#3a3550'); px(sx + w - 1, 84, 2, GROUND_Y - 84, '#3a3550'); // rails
@@ -1466,6 +1563,7 @@ function drawDecal(d) {
   const x = Math.round(d.x - camX);
   if (x < -10 || x > W + 10) return;
   if (LEVEL.kind === 'knight') { px(x - 5, d.y - 1, 10, 1, '#9fb1cf'); px(x - 1, d.y - 2, 3, 1, '#c8d2e6'); px(x + 3, d.y - 2, 2, 1, '#e8303a'); return; }
+  if (LEVEL.kind === 'monster') { px(x - 5, d.y - 1, 10, 1, '#5de0c4'); px(x - 2, d.y - 2, 4, 1, '#c9f5ff'); px(x + 3, d.y - 2, 2, 1, '#7ab8ff'); return; }
   if (LEVEL.kind === 'brain') { px(x - 5, d.y - 1, 10, 1, '#ff9ec4'); px(x - 2, d.y - 2, 4, 1, '#ffc2dc'); px(x + 3, d.y - 2, 2, 1, '#c9a2ff'); return; }
   if (LEVEL.kind === 'zombie') { px(x - 5, d.y - 1, 10, 1, '#86c97e'); px(x - 2, d.y - 2, 4, 1, '#9be07a'); px(x + 3, d.y - 2, 2, 1, '#eaeaea'); return; }
   px(x - 4, d.y - 1, 8, 1, SHIRTS[d.hue]); px(x - 2, d.y - 2, 4, 1, '#ffd8b0');
@@ -1512,7 +1610,7 @@ function draw() {
   ctx.save();
   const sh = shake > 0 ? Math.min(2, Math.ceil(shake / 4)) * (frame % 2 ? 1 : -1) : 0;
   ctx.translate(sh, topPad - Math.round(camY)); // the world layer: scrolls down when you go underground, shakes on a smash
-  px(0, -topPad - 100, W, topPad + 100, { day: '#8fd3ff', night: '#0b1030', castle: '#16121f', brain: '#2a0d2e' }[LEVEL.theme]); // sky above the world (portrait)
+  px(0, -topPad - 100, W, topPad + 100, { day: '#8fd3ff', night: '#0b1030', castle: '#16121f', brain: '#2a0d2e', water: '#0a3a66' }[LEVEL.theme]); // sky above the world (portrait)
   drawBackground();
   drawPits();
   drawCavity();

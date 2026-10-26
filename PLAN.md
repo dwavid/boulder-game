@@ -21,11 +21,11 @@
 - [x] Portrait mode on phones: tall, narrow view with the buttons underneath (landscape unchanged)
 - [x] Level 4: Braintopia (inside a brain: little brains instead of people, blinking synapse zaps, and the Big Brain boss who calls down lightning columns)
 - [x] Level 4 ending: the Big Brain drops a key, smash the pile of bones, unlock the bone floor and bone cage, free an even smaller baby pebble (who talks about synapses)
+- [x] Level 5: Watertopia (underwater: little water monsters, and hydrothermal vents that bubble, glow, then shoot a scalding column you wait out)
 - [x] Level progression: beat a level to unlock the next; game over retries the same level
 
 ## Ideas backlog (add yours here!)
 - [ ] Level 5 and beyond (ideas: ice cave, lava, candy land, space) and a proper level select screen
-- [ ] **Watertopia** (from the kid): an underwater level. The people you squish are little water monsters. The obstacles are hydrothermal vents, little geysers of hot water.
 - [ ] Boulder gets bigger (or faster) as it squishes people
 - [ ] More kinds of enemies: runners, archers who shoot back, people who throw things
 - [ ] More things to smash (crates, ice, cracked floors that hide secrets) and a proper story ending for the baby rock
