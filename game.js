@@ -201,6 +201,8 @@ const LEVELS = [{
   },
 }, {
   name: 'WATERTOPIA', theme: 'water', kind: 'monster', hint: 'Squish the water monsters. Dodge the hot vents!',
+  // underwater: slower, drifty and floaty (jump apex ~65px instead of ~52)
+  tune: { gravity: 0.2, jump: 5.1, maxSpeed: 1.8, accel: 0.3, airAccel: 0.22, friction: 0.2 },
   width: 3100,
   solids: [
     [0, GROUND_Y, 640, 30], [690, GROUND_Y, 560, 30], [1305, GROUND_Y, 700, 30], [2060, GROUND_Y, 520, 30], [2635, GROUND_Y, 465, 30],
@@ -521,14 +523,15 @@ function smashSolid(sd) {
 
 function updateBoulder() {
   const b = boulder, r = TUNE.radius, prevBottom = b.y + r;
+  const T = LEVEL.tune ? { ...TUNE, ...LEVEL.tune } : TUNE; // a level can override how the boulder moves (Watertopia: floaty)
   const c = ending ? ending.ctrl : input; // during the ending the boulder is moved by the script, not by you
   const dir = (c.right ? 1 : 0) - (c.left ? 1 : 0);
-  const acc = b.onGround ? TUNE.accel : TUNE.airAccel;
+  const acc = b.onGround ? T.accel : T.airAccel;
   if (dir) { b.vx += dir * acc; b.face = dir; }
   else if (b.onGround) {
-    b.vx = Math.abs(b.vx) < TUNE.friction ? 0 : b.vx - Math.sign(b.vx) * TUNE.friction;
+    b.vx = Math.abs(b.vx) < T.friction ? 0 : b.vx - Math.sign(b.vx) * T.friction;
   }
-  b.vx = clamp(b.vx, -TUNE.maxSpeed, TUNE.maxSpeed);
+  b.vx = clamp(b.vx, -T.maxSpeed, T.maxSpeed);
 
   if (c.jumpPressed) { b.jumpBuf = 6; c.jumpPressed = false; }
   // Smash: jump, then press down to slam straight down. It breaks sand (and anything else smashable).
@@ -537,12 +540,12 @@ function updateBoulder() {
     if (!b.onGround && !b.smashing) { b.smashing = true; b.vy = TUNE.smashSpeed; b.vx = 0; beep(180, 0.2, 'sawtooth', 0.05, -100); }
   }
   if (b.jumpBuf > 0 && b.coyote > 0) {
-    b.vy = -TUNE.jump; b.coyote = 0; b.jumpBuf = 0; b.onGround = false; sfx.jump();
+    b.vy = -T.jump; b.coyote = 0; b.jumpBuf = 0; b.onGround = false; sfx.jump();
   }
   if (!c.jump && b.vy < -2.2 && !b.smashing) b.vy = -2.2; // release early = short hop
   b.jumpBuf--;
 
-  b.vy += TUNE.gravity;
+  b.vy += T.gravity;
   b.vy = Math.min(b.vy, b.smashing ? TUNE.smashSpeed : 7);
   b.x += b.vx; b.y += b.vy;
   b.x = Math.max(r, b.x);
@@ -586,7 +589,7 @@ function updateBoulder() {
   if (boss && boss.active && !boss.dead && b.vy > 0) {
     const headTop = GROUND_Y - TUNE.bossHeight;
     if (prevBottom <= headTop + 3 && b.y + r >= headTop && Math.abs(b.x - boss.x) < (LEVEL.boss.hitW || 22)) {
-      b.y = headTop - r - 1; b.vy = -TUNE.jump * 0.85; b.onGround = false; b.coyote = 0; b.smashing = false;
+      b.y = headTop - r - 1; b.vy = -T.jump * 0.85; b.onGround = false; b.coyote = 0; b.smashing = false;
       if (boss.invul <= 0) hurtBoss();
       else beep(300, 0.1, 'square', 0.04, 200);
     }
