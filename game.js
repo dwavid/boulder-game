@@ -895,7 +895,11 @@ function drawWaterBackground() {
   });
   for (let i = 0; i < 4; i++) { // fish swimming by
     const dir = i % 2 ? -1 : 1, x = (((i * 140 + dir * frame * 0.4 - camX * 0.5) % (W + 60)) + (W + 60)) % (W + 60) - 30, y = 24 + i * 22;
-    px(x, y, 8, 3, '#0a3256'); px(dir > 0 ? x - 3 : x + 8, y - 1, 3, 5, '#0a3256');
+    const fx = Math.round(x), fy = Math.round(y), body = '#0a3256';
+    ellipse(fx, fy, 6, 3, body); // oval body
+    for (let k = 0; k < 4; k++) px(fx - dir * (6 + k), fy - k, 1, k * 2 + 1, body); // forked tail: a triangle that widens behind it
+    px(fx - dir, fy - 4, 3, 1, body); // top fin
+    px(fx + dir * 3, fy - 1, 1, 1, '#9fd8ff'); // eye
   }
   for (let i = 0; i < 16; i++) { // bubbles rising
     const x = (((i * 71 - camX * 0.8) % W) + W) % W, y = WORLD_H - ((frame * (0.25 + (i % 3) * 0.1) + i * 29) % WORLD_H);
