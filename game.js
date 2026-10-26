@@ -468,7 +468,7 @@ const sweepY = (phase, ahead = 0) => 117 + Math.sin((frame + ahead + phase) * TU
 
 function laserHits(l, cx, cy, r) {
   if (l[0] === 'gate') return gateState(l[2]) === 'on' && hitsCircleRect(cx, cy, r, l[1] - 2, 14, 5, GROUND_Y - 14);
-  if (l[0] === 'synapse') return gateState(l[3]) === 'on' && hitsCircleRect(cx, cy, r, l[1] - 2, 126, l[2] + 4, GROUND_Y - 126);
+  if (l[0] === 'synapse') return gateState(l[3]) === 'on' && hitsCircleRect(cx, cy, r, l[1] - 2, 132, l[2] + 4, GROUND_Y - 132);
   return hitsCircleRect(cx, cy, r, l[1], sweepY(l[3]) - 2, l[2], 4);
 }
 
@@ -1261,7 +1261,9 @@ function drawSynapse([, x, w, phase]) {
   if (sx > W + 10 || sx + w < -10) return;
   const light = { off: '#7df0ff', warn: '#ffd23f', on: '#ffffff' }[st];
   if (st === 'on') {
-    px(sx, 126, w, GROUND_Y - 126, `rgba(125,240,255,${frame % 4 < 2 ? 0.3 : 0.2})`);
+    const glow = frame % 4 < 2 ? 0.3 : 0.2; // hugs the bolt: same zone as the hitbox in laserHits
+    px(sx, 134, w, GROUND_Y - 134, `rgba(125,240,255,${glow})`);
+    px(sx, 132, w, 2,`rgba(125,240,255,${glow * 0.5})`); // softer top edge
     for (let i = 0; i < w; i += 2) { // jagged bolt, re-rolled every frame
       const j = ((i * 13 + frame * 7) % 11) - 5;
       px(sx + i, 138 + j, 3, 3, '#7df0ff'); px(sx + i, 139 + j, 2, 1, '#fff');
