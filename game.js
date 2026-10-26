@@ -432,6 +432,22 @@ const sfx = {
   die: () => beep(400, 0.5, 'sawtooth', 0.06, -350),
   win: () => { beep(523, 0.15); setTimeout(() => beep(659, 0.15), 120); setTimeout(() => beep(784, 0.3), 240); },
   checkpoint: () => beep(700, 0.15, 'triangle', 0.06, 300),
+  // Big Brain: a 1.25s charge-up (matches TUNE.brainWindup) that crackles faster and faster, with four tense ticks once
+  // the warning columns lock on, then a thunder-crack strike.
+  brainCharge: () => {
+    tone('sawtooth', 70, 1100, 1.25, 0.01, 0.07);
+    tone('square', 140, 2200, 1.25, 0.004, 0.03);
+    tone('sine', 50, 160, 1.25, 0.02, 0.16);
+    for (let i = 0; i < 32; i++) noise('highpass', rand(2500, 5500), 3000, 1, 0.03, (0.02 + 0.07 * i / 32), 0, 1.25 * (1 - (1 - i / 32) ** 2) + rand(0, 0.015));
+    for (let i = 0; i < 4; i++) beep(1000, 0.05, 'square', 0.035, 0, 0.75 + i * 0.15);
+  },
+  brainZap: () => {
+    noise('lowpass', 9000, 500, 0.7, 0.4, 0.28, 0); // the crack
+    tone('sawtooth', 2800, 80, 0.3, 0.16, 0);
+    tone('square', 1800, 200, 0.12, 0.06, 0, 0.05);
+    tone('sine', 130, 36, 0.6, 0.3, 0); // thunder boom
+    for (let i = 0; i < 16; i++) noise('bandpass', rand(1500, 6000), rand(600, 2500), 3, rand(0.02, 0.05), 0.1 * (1 - i / 16), 0, 0.12 + i * 0.03 + rand(0, 0.02)); // crackling tail
+  },
 };
 
 // ----- Hazard sounds: lasers, synapses and vents charge up when they enter their warning, then fire -----
@@ -921,11 +937,11 @@ function updateBigBrain() {
   if (boss.state === 'walk') {
     const speed = TUNE.brainSpeed + hits * 0.08, tx = clamp(b.x, cfg.zoneMin, cfg.zoneMax);
     if (Math.abs(tx - boss.x) > speed) boss.x += Math.sign(tx - boss.x) * speed;
-    if (boss.timer <= 0) { boss.state = 'windup'; boss.timer = TUNE.brainWindup; boss.flip = Math.random() < 0.5 ? 1 : -1; }
+    if (boss.timer <= 0) { boss.state = 'windup'; boss.timer = TUNE.brainWindup; sfx.brainCharge(); boss.flip = Math.random() < 0.5 ? 1 : -1; }
   } else if (boss.state === 'windup') {
     if (boss.timer > TUNE.brainLock) boss.target = b.x;
     boss.strikes = brainColumns(boss.target, boss.flip, 1 + hits);
-    if (boss.timer <= 0) { boss.state = 'swing'; boss.timer = TUNE.brainZap; beep(140, 0.3, 'sawtooth', 0.07, 400); shake = 8; }
+    if (boss.timer <= 0) { boss.state = 'swing'; boss.timer = TUNE.brainZap; sfx.brainZap(); shake = 8; }
   } else if (boss.state === 'swing') {
     if (deadTimer === 0) for (const x of boss.strikes) if (hitsCircleRect(b.x, b.y, TUNE.radius - 1, x - 6, 0, 12, GROUND_Y)) { die(); break; }
     if (boss.timer <= 0) { boss.state = 'recover'; boss.timer = TUNE.brainRest; boss.strikes = []; }
