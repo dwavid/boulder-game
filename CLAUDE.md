@@ -7,6 +7,7 @@ A browser side-scroller called BOULD (the name the owner's 4-year-old picked): y
 - `game.js`: all game code (tunables at the top in `TUNE`, levels in the `LEVELS` array, then input, sound, update, draw, main loop)
 - `PLAN.md`: concept, done list, ideas backlog. Update it when features land.
 - Hosting: GitHub Pages deploys the repo root from the `main` branch (no workflow file needed)
+- Workflow: one-developer project. No pull requests or feature branches needed: commit and push straight to `main` (this is the owner's standing instruction).
 
 ## Conventions
 - Logical resolution is 320x180 in landscape. In portrait on a touch device `layout()` makes `W` about 195 and `H` as tall as fits above the buttons (whole-number CSS scale); the world is drawn bottom-aligned, shifted down by `topPad`, with extra sky above it. Use `WORLD_H` (180) for world-space heights (never `H`), and use `W` rather than 320 for anything screen-width related. The boss camera follows you inside the arena in portrait because the arena doesn't fit on screen. Test both: Playwright with `isMobile: true, hasTouch: true` at 390x844 and 844x390. Original note: CSS scales it with `image-rendering: pixelated`. Draw with integer coordinates and the `px()` / `disc()` helpers.
