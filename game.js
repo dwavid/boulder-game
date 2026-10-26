@@ -46,6 +46,7 @@ const TUNE = {
   brainWindup: 75, // frames the brain charges up; it follows you at first, then locks on for the last brainLock frames
   brainLock: 30,
   brainZap: 18, // frames the lightning columns stay deadly
+  maxFall: 7, // fastest the boulder falls (not counting a smash)
   brainRest: 70, // frames it waits before the next attack
 };
 
@@ -202,7 +203,8 @@ const LEVELS = [{
 }, {
   name: 'WATERTOPIA', theme: 'water', kind: 'monster', hint: 'Squish the water monsters. Dodge the hot vents!',
   // underwater: slower, drifty and floaty (jump apex ~65px instead of ~52)
-  tune: { gravity: 0.2, jump: 5.1, maxSpeed: 1.8, accel: 0.3, airAccel: 0.22, friction: 0.2 },
+  // falling is extra slow (fallGravity and maxFall) so you sink like in water
+  tune: { gravity: 0.2, jump: 5.1, maxSpeed: 1.8, accel: 0.3, airAccel: 0.22, friction: 0.2, fallGravity: 0.07, maxFall: 1.8 },
   width: 3100,
   solids: [
     [0, GROUND_Y, 640, 30], [690, GROUND_Y, 560, 30], [1305, GROUND_Y, 700, 30], [2060, GROUND_Y, 520, 30], [2635, GROUND_Y, 465, 30],
@@ -545,8 +547,8 @@ function updateBoulder() {
   if (!c.jump && b.vy < -2.2 && !b.smashing) b.vy = -2.2; // release early = short hop
   b.jumpBuf--;
 
-  b.vy += T.gravity;
-  b.vy = Math.min(b.vy, b.smashing ? TUNE.smashSpeed : 7);
+  b.vy += b.vy > 0 && !b.smashing && T.fallGravity ? T.fallGravity : T.gravity; // a level can make falling gentler than rising
+  b.vy = Math.min(b.vy, b.smashing ? TUNE.smashSpeed : T.maxFall);
   b.x += b.vx; b.y += b.vy;
   b.x = Math.max(r, b.x);
 
