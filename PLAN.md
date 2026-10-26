@@ -19,11 +19,11 @@
 - [x] Smash move: jump, then press down (▼ button on phones) to ground-pound; breaks sand (reusable for other smashable things)
 - [x] Level 3 ending: the boss drops a key, smash the sand, unlock the brick floor and cage, free the baby rock, and roll off together
 - [x] Portrait mode on phones: tall, narrow view with the buttons underneath (landscape unchanged)
+- [x] Level 4: Braintopia (inside a brain: little brains instead of people, blinking synapse zaps, and the Big Brain boss who calls down lightning columns)
 - [x] Level progression: beat a level to unlock the next; game over retries the same level
 
 ## Ideas backlog (add yours here!)
-- [ ] Level 4 and beyond (ideas: ice cave, lava, candy land, space) and a proper level select screen
-- [ ] **Braintopia** (from the kid): the level takes place inside a brain. The people you squish are little brains. The obstacles are synapses that zap.
+- [ ] Level 5 and beyond (ideas: ice cave, lava, candy land, space) and a proper level select screen
 - [ ] **Watertopia** (from the kid): an underwater level. The people you squish are little water monsters. The obstacles are hydrothermal vents, little geysers of hot water.
 - [ ] Boulder gets bigger (or faster) as it squishes people
 - [ ] More kinds of enemies: runners, archers who shoot back, people who throw things

@@ -42,6 +42,11 @@ const TUNE = {
   bossReach: 50, // how far in front of him the sword reaches (on the ground)
   bossHurt: 100, // frames he's dazed (and can't attack) after you land on his head
   bossSpeed: 0.45, // walking speed; he gets 0.1 faster after each hit
+  brainSpeed: 0.5, // the Big Brain floats toward you this fast (a bit faster after each hit)
+  brainWindup: 75, // frames the brain charges up; it follows you at first, then locks on for the last brainLock frames
+  brainLock: 30,
+  brainZap: 18, // frames the lightning columns stay deadly
+  brainRest: 70, // frames it waits before the next attack
 };
 
 // ---------- Level ----------
@@ -134,12 +139,45 @@ const LEVELS = [{
   // The Giant Knight. The fight starts when you cross arenaLeft; the camera then locks onto the arena.
   // zoneMin/zoneMax is how far he can walk (between the two ledges). No goalX: beating the boss wins the level.
   boss: { name: 'THE GIANT KNIGHT', x: 3254, hp: 3, arenaLeft: 3092, camX: 3080, zoneMin: 3202, zoneMax: 3306 },
+}, {
+  name: 'BRAINTOPIA', theme: 'brain', kind: 'brain', hint: 'Squish the little brains. Dodge the zaps!',
+  width: 3400,
+  solids: [
+    [0, GROUND_Y, 640, 30], [690, GROUND_Y, 560, 30], [1305, GROUND_Y, 700, 30], [2060, GROUND_Y, 520, 30], [2630, GROUND_Y, 770, 30],
+    // platforms and steps
+    [360, 112, 80, 8], [900, 108, 80, 8], [1700, 132, 30, 18], [1730, 114, 30, 36], [2320, 110, 70, 8],
+    // boss arena (same shape as the castle's): a ledge on each side to leap from, and a wall at the end
+    [3124, 112, 64, 8], [3320, 112, 64, 8], [3392, 0, 8, GROUND_Y],
+  ],
+  // synapses (in the lasers list): ['synapse', x, width, phase] is an electric arc between two neurons that blinks like a
+  // gate (off, yellow sparks as a warning, then zapping). It only reaches up to about knee height, so hop over it or wait.
+  lasers: [
+    ['synapse', 250, 32, 0], ['synapse', 520, 36, 100], ['synapse', 790, 32, 40], ['synapse', 1050, 36, 120],
+    ['synapse', 1430, 32, 60], ['synapse', 1560, 36, 160], ['synapse', 1840, 32, 20], ['synapse', 2180, 36, 80],
+    ['synapse', 2455, 32, 140], ['synapse', 2760, 36, 30], ['synapse', 2900, 32, 110],
+  ],
+  // little brains: [x, floorY, walkMin, walkMax]
+  people: [
+    [150, GROUND_Y, 100, 230], [400, GROUND_Y, 330, 480], [385, 112, 365, 435], [600, GROUND_Y, 560, 630],
+    [740, GROUND_Y, 700, 780], [940, 108, 905, 975], [900, GROUND_Y, 860, 1020], [1160, GROUND_Y, 1110, 1230],
+    [1360, GROUND_Y, 1320, 1420], [1520, GROUND_Y, 1480, 1550], [1650, GROUND_Y, 1620, 1690], [1745, 114, 1738, 1752],
+    [1950, GROUND_Y, 1900, 1990], [2120, GROUND_Y, 2080, 2170], [2350, 110, 2325, 2385], [2300, GROUND_Y, 2240, 2420],
+    [2540, GROUND_Y, 2500, 2570], [2700, GROUND_Y, 2650, 2740], [2840, GROUND_Y, 2810, 2890], [2980, GROUND_Y, 2950, 3050],
+  ],
+  checkpoints: [725, 1330, 2090, 2670, 3010],
+  // The Big Brain floats above the arena. type 'brain' = it calls down lightning columns instead of swinging a sword.
+  // Same ledges as the castle arena. hitW is how wide its top is for landing on it.
+  boss: {
+    name: 'THE BIG BRAIN', type: 'brain', x: 3254, hp: 3, arenaLeft: 3092, camX: 3080, zoneMin: 3214, zoneMax: 3294, hitW: 24,
+    tip: 'Land on its brain from above! Dodge the zaps!', colors: ['#ff9ec4', '#ffffff', '#c9a2ff', '#7df0ff'],
+  },
 }];
 
 // Scenery scattered on solid ground; drawn behind everything.
 const DECOR_KINDS = {
   night: ['stone', 'cross', 'tree', 'stone', 'fence'],
   castle: ['barrel', 'brazier', 'crate', 'barrel', 'crate'],
+  brain: ['neuron', 'coil', 'sprout', 'coil', 'neuron'],
 };
 function genDecor(level) {
   const out = [];
@@ -294,6 +332,7 @@ const SQUISH_COLORS = {
   person: ['#ffe14d', '#fff', '#ff7ab8'],
   zombie: ['#9be07a', '#eaeaea', '#c9b8ff'],
   knight: ['#c8d2e6', '#ffffff', '#e8303a'],
+  brain: ['#ff9ec4', '#ffffff', '#c9a2ff', '#8fd8ff'],
 };
 
 // ---------- Game state ----------
@@ -332,7 +371,7 @@ function resetRun() {
 }
 function respawn() {
   if (boss) Object.assign(boss, { // the fight starts over when you respawn, but damage you've done stays
-    x: LEVEL.boss.x, dir: -1, state: 'idle', timer: 0, invul: 0, active: false, wall: 0,
+    x: LEVEL.boss.x, dir: -1, state: 'idle', timer: 0, invul: 0, active: false, wall: 0, target: 0, strikes: [],
   });
   boulder = { x: spawnX, y: GROUND_Y - 30, vx: 0, vy: 0, rot: 0, onGround: false, coyote: 0, jumpBuf: 0, face: 1, age: 0 };
   for (const g of ghosts) { [g.x, g.y] = ghostHome(g); g.chase = false; } // ghosts go back to their patrol
@@ -398,6 +437,7 @@ const sweepY = (phase, ahead = 0) => 117 + Math.sin((frame + ahead + phase) * TU
 
 function laserHits(l, cx, cy, r) {
   if (l[0] === 'gate') return gateState(l[2]) === 'on' && hitsCircleRect(cx, cy, r, l[1] - 2, 14, 5, GROUND_Y - 14);
+  if (l[0] === 'synapse') return gateState(l[3]) === 'on' && hitsCircleRect(cx, cy, r, l[1] - 2, 126, l[2] + 4, GROUND_Y - 126);
   return hitsCircleRect(cx, cy, r, l[1], sweepY(l[3]) - 2, l[2], 4);
 }
 
@@ -407,7 +447,7 @@ function hitsCircleRect(cx, cy, r, rx, ry, rw, rh) {
   return dx * dx + dy * dy < r * r;
 }
 
-const BOSS_WALL = [3076, 0, 12, GROUND_Y]; // drops behind you when the boss fight starts
+const bossWall = () => [LEVEL.boss.arenaLeft - 16, 0, 12, GROUND_Y]; // drops behind you when the boss fight starts
 
 // Smashable pieces of level are solids with a 5th entry, 'sand'. Smashing one removes it.
 function smashSolid(sd) {
@@ -449,7 +489,7 @@ function updateBoulder() {
   b.onGround = false;
   const wasSmashing = b.smashing;
   let onBrick = false;
-  const list = boss && boss.active ? solids.concat([BOSS_WALL]) : solids;
+  const list = boss && boss.active ? solids.concat([bossWall()]) : solids;
   for (const sd of list) {
     const [sx, sy, sw, sh, type] = sd;
     const cx = clamp(b.x, sx, sx + sw), cy = clamp(b.y, sy, sy + sh);
@@ -484,7 +524,7 @@ function updateBoulder() {
   // landing on the boss's head from above (the only way to hurt him); you bounce off either way
   if (boss && boss.active && !boss.dead && b.vy > 0) {
     const headTop = GROUND_Y - TUNE.bossHeight;
-    if (prevBottom <= headTop + 3 && b.y + r >= headTop && Math.abs(b.x - boss.x) < 22) {
+    if (prevBottom <= headTop + 3 && b.y + r >= headTop && Math.abs(b.x - boss.x) < (LEVEL.boss.hitW || 22)) {
       b.y = headTop - r - 1; b.vy = -TUNE.jump * 0.85; b.onGround = false; b.coyote = 0; b.smashing = false;
       if (boss.invul <= 0) hurtBoss();
       else beep(300, 0.1, 'square', 0.04, 200);
@@ -563,12 +603,12 @@ function updatePeople() {
 function hurtBoss() {
   boss.hp--;
   boss.invul = TUNE.bossHurt; boss.state = 'hurt'; boss.timer = TUNE.bossHurt;
-  spawnBurst(boss.x, GROUND_Y - TUNE.bossHeight, ['#c8d2e6', '#ffffff', '#e8303a', '#ffd23f'], 22, 2.2);
+  spawnBurst(boss.x, GROUND_Y - TUNE.bossHeight, LEVEL.boss.colors || ['#c8d2e6', '#ffffff', '#e8303a', '#ffd23f'], 22, 2.2);
   floaters.push({ x: boss.x, y: GROUND_Y - TUNE.bossHeight - 14, text: boss.hp > 0 ? 'OUCH!' : 'DEFEATED!', life: 60 });
   beep(160, 0.35, 'sawtooth', 0.08, -90);
   if (boss.hp <= 0) {
     boss.dead = true; boss.timer = 150;
-    spawnBurst(boss.x, GROUND_Y - 30, ['#c8d2e6', '#9fb1cf', '#e8303a', '#ffd23f', '#fff'], 60, 3);
+    spawnBurst(boss.x, GROUND_Y - 30, (LEVEL.boss.colors || ['#c8d2e6', '#9fb1cf', '#e8303a', '#ffd23f']).concat('#fff'), 60, 3);
     sfx.win();
   }
 }
@@ -576,8 +616,11 @@ function hurtBoss() {
 function updateBoss() {
   if (!boss) return;
   const b = boulder, cfg = LEVEL.boss;
-  if (boss.dead) { // after the explosion, he drops a key
-    if (--boss.timer === 80) {
+  if (boss.dead) {
+    boss.timer--;
+    boss.strikes = [];
+    if (!LEVEL.underground) { if (boss.timer <= 0) { state = 'win'; sfx.win(); } } // no secret ending: beating the boss wins
+    else if (boss.timer === 80) { // after the explosion, he drops a key
       key = { x: boss.x, y: GROUND_Y - TUNE.bossHeight, vy: -2.5, rest: false };
       floaters.push({ x: boss.x, y: GROUND_Y - 80, text: 'A KEY!', life: 70 });
     }
@@ -592,8 +635,8 @@ function updateBoss() {
   boss.timer--;
   const dx = b.x - boss.x, reach = TUNE.bossReach;
   const nearGround = b.y + TUNE.radius > 124; // sword only reaches low: ledges and jumps over it are safe
-  if (boss.state === 'roar') { if (boss.timer <= 0) boss.state = 'walk'; }
-  else if (boss.state === 'hurt') { if (boss.timer <= 0) boss.state = 'walk'; }
+  if (boss.state === 'roar' || boss.state === 'hurt') { if (boss.timer <= 0) { boss.state = 'walk'; boss.timer = 40; } }
+  else if (cfg.type === 'brain') updateBigBrain();
   else if (boss.state === 'walk') {
     boss.dir = dx >= 0 ? 1 : -1;
     const speed = TUNE.bossSpeed + (cfg.hp - boss.hp) * 0.1;
@@ -611,6 +654,30 @@ function updateBoss() {
     if (boss.timer <= 0) { boss.state = 'recover'; boss.timer = 40; }
   } else if (boss.state === 'recover') {
     if (boss.timer <= 0) boss.state = 'walk';
+  }
+}
+
+// ----- The Big Brain -----
+// It floats toward you, charges up (a warning column shows where the lightning will land; it follows you at first,
+// then locks on so you can step away), zaps, and rests. Each hit you land adds one more column.
+const brainColumns = (target, flip, n) => [0, 64 * flip, -64 * flip].slice(0, n).map((o) => target + o);
+
+function updateBigBrain() {
+  const b = boulder, cfg = LEVEL.boss, hits = cfg.hp - boss.hp;
+  boss.dir = b.x >= boss.x ? 1 : -1;
+  if (boss.state === 'walk') {
+    const speed = TUNE.brainSpeed + hits * 0.08, tx = clamp(b.x, cfg.zoneMin, cfg.zoneMax);
+    if (Math.abs(tx - boss.x) > speed) boss.x += Math.sign(tx - boss.x) * speed;
+    if (boss.timer <= 0) { boss.state = 'windup'; boss.timer = TUNE.brainWindup; boss.flip = Math.random() < 0.5 ? 1 : -1; }
+  } else if (boss.state === 'windup') {
+    if (boss.timer > TUNE.brainLock) boss.target = b.x;
+    boss.strikes = brainColumns(boss.target, boss.flip, 1 + hits);
+    if (boss.timer <= 0) { boss.state = 'swing'; boss.timer = TUNE.brainZap; beep(140, 0.3, 'sawtooth', 0.07, 400); shake = 8; }
+  } else if (boss.state === 'swing') {
+    if (deadTimer === 0) for (const x of boss.strikes) if (hitsCircleRect(b.x, b.y, TUNE.radius - 1, x - 6, 0, 12, GROUND_Y)) { die(); break; }
+    if (boss.timer <= 0) { boss.state = 'recover'; boss.timer = TUNE.brainRest; boss.strikes = []; }
+  } else if (boss.state === 'recover') {
+    if (boss.timer <= 0) { boss.state = 'walk'; boss.timer = 0; }
   }
 }
 
@@ -740,6 +807,14 @@ function update() {
 // ---------- Drawing ----------
 const px = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), w, h); };
 
+function ellipse(cx, cy, rx, ry, c) {
+  ctx.fillStyle = c;
+  for (let dy = -ry; dy <= ry; dy++) {
+    const half = Math.round(rx * Math.sqrt(1 - (dy * dy) / (ry * ry + 0.5)));
+    ctx.fillRect(Math.round(cx) - half, Math.round(cy) + dy, half * 2 + 1, 1);
+  }
+}
+
 function disc(cx, cy, r, c) {
   ctx.fillStyle = c;
   for (let dy = -r; dy <= r; dy++) {
@@ -751,7 +826,7 @@ function disc(cx, cy, r, c) {
 const hillH = (wx) => 28 + Math.sin(wx * 0.02) * 10 + Math.sin(wx * 0.047) * 5;
 
 function drawBackground() {
-  ({ day: drawDayBackground, night: drawNightBackground, castle: drawCastleBackground })[LEVEL.theme]();
+  ({ day: drawDayBackground, night: drawNightBackground, castle: drawCastleBackground, brain: drawBrainBackground })[LEVEL.theme]();
 }
 
 function drawNightBackground() {
@@ -822,6 +897,35 @@ function drawCastleBackground() {
   px(0, 0, W, 12, '#16121f'); px(0, 12, W, 2, '#2e2942');
 }
 
+// Inside a brain: pink-purple folds, drifting neurons with arms, and electric pulses running along them.
+function drawBrainBackground() {
+  ['#2a0d2e', '#3a1240', '#4a1a4e', '#5c2060'].forEach((c, i) => px(0, i * 38, W, 38, c));
+  // soft folds (gyri) at two depths
+  for (const [par, base, amp, col] of [[0.15, 50, 16, '#56215a'], [0.3, 92, 14, '#6a2a6e']]) {
+    for (let sx = 0; sx < W; sx++) {
+      const wx = sx + camX * par;
+      px(sx, base + Math.sin(wx * 0.03) * amp + Math.sin(wx * 0.071) * 5, 1, 2, col);
+      px(sx, base + 22 + Math.sin(wx * 0.025 + 2) * amp, 1, 1, col);
+    }
+  }
+  // neurons: a round body with arms, and a pulse of light travelling along an arm
+  repeating(130, 0.5, (sx, i) => {
+    const n = ((i % 7) + 7) % 7, y = 30 + n * 11, arms = [[-14, -9], [13, -7], [-11, 10], [15, 11]];
+    for (const [ax, ay] of arms) {
+      for (let t = 0; t <= 6; t++) px(sx + (ax * t) / 6, y + (ay * t) / 6, 1, 1, '#8a3d9e');
+      px(sx + ax - 1, y + ay - 1, 3, 3, '#b86fe0');
+    }
+    disc(sx, y, 5, '#8a3d9e'); disc(sx, y, 3, '#c98cf0'); px(sx - 1, y - 1, 2, 2, '#ffe9ff');
+    const t = ((frame + n * 23) % 60) / 60, [ax, ay] = arms[n % 4]; // pulse travels from the body out along one arm
+    px(sx + ax * t, y + ay * t, 2, 2, '#7df0ff');
+  });
+  // tiny bubbles floating up
+  for (let i = 0; i < 14; i++) {
+    const x = (((i * 83 - camX * 0.8) % W) + W) % W, y = WORLD_H - ((frame * (0.2 + (i % 3) * 0.1) + i * 31) % WORLD_H);
+    px(x, y, 2, 2, 'rgba(255,180,230,0.35)');
+  }
+}
+
 function drawDayBackground() {
   px(0, 0, W, WORLD_H, '#8fd3ff');
   // clouds
@@ -848,6 +952,10 @@ const SOLID_STYLE = {
   castle: {
     ground: ['#4a4660', '#38344d', '#7a7699', '#5d5a7a'],
     stone: ['#5b5874', '#46435e', '#8e8bb0', '#6a6790'],
+  },
+  brain: {
+    ground: ['#b24a72', '#8f3a5e', '#ff8fb3', '#d9608a'],
+    stone: ['#7d4fa8', '#5f3a85', '#b58ae0', '#9467c4'],
   },
 };
 
@@ -904,10 +1012,11 @@ function drawPits() {
   for (let i = 0; i < ground.length - 1; i++) {
     const a = ground[i][0] + ground[i][2], w = ground[i + 1][0] - a, sx = Math.round(a - camX);
     if (sx > W || sx + w < 0) continue;
-    px(sx, GROUND_Y, w, WORLD_H - GROUND_Y, { day: '#24150d', night: '#04020a', castle: '#0a0508' }[theme]);
-    if (theme === 'castle') { // a glowing red-hot dungeon pit: not animated, but easy to see
-      for (let k = 0; k < 4; k++) px(sx, WORLD_H - 16 + k * 4, w, 4, `rgba(255,100,40,${0.12 + k * 0.1})`);
-      for (let k = 0; k < 4; k++) px(sx, GROUND_Y - 12 + k * 3, w, 3, `rgba(255,100,40,${0.04 + k * 0.04})`);
+    px(sx, GROUND_Y, w, WORLD_H - GROUND_Y, { day: '#24150d', night: '#04020a', castle: '#0a0508', brain: '#10031a' }[theme]);
+    const hot = { castle: '255,100,40', brain: '90,210,255' }[theme]; // castle: red-hot dungeon pit; brain: crackling blue void
+    if (hot) { // not animated, but easy to see
+      for (let k = 0; k < 4; k++) px(sx, WORLD_H - 16 + k * 4, w, 4, `rgba(${hot},${0.12 + k * 0.1})`);
+      for (let k = 0; k < 4; k++) px(sx, GROUND_Y - 12 + k * 3, w, 3, `rgba(${hot},${0.04 + k * 0.04})`);
     }
     if (night) { // spooky green glow, mist and rising wisps (daytime pits are just dirt holes)
       const glow = '110,255,150';
@@ -1016,6 +1125,14 @@ function drawDecor([x, kind]) {
     const f = (frame >> 2) % 3;
     px(sx - 2, y - 14 - f, 4, 4 + f, '#ff9a30'); px(sx - 1, y - 13, 2, 3, '#ffe27a');
     disc(sx, y - 12, 12, 'rgba(255,160,60,0.1)');
+  } else if (kind === 'neuron') {
+    px(sx - 1, y - 8, 3, 8, '#8a3d9e'); disc(sx, y - 11, 4, '#b86fe0'); px(sx - 1, y - 12, 2, 2, '#ffe9ff');
+    px(sx - 6, y - 14, 3, 1, '#8a3d9e'); px(sx + 4, y - 14, 3, 1, '#8a3d9e');
+    if ((frame >> 3) % 4 === 0) disc(sx, y - 11, 7, 'rgba(125,240,255,0.15)');
+  } else if (kind === 'coil') { // a squiggly wire
+    for (let k = 0; k < 14; k++) px(sx - 7 + k, y - 4 + Math.round(Math.sin(k * 0.9) * 2), 1, 2, '#e8607f');
+  } else if (kind === 'sprout') {
+    px(sx, y - 7, 1, 7, '#6fcf86'); px(sx - 3, y - 7, 3, 2, '#8fe3a0'); px(sx + 1, y - 9, 3, 2, '#8fe3a0');
   } else if (kind === 'fence') {
     for (let k = 0; k < 4; k++) { px(sx - 8 + k * 5, y - 8, 2, 8, '#35304a'); px(sx - 8 + k * 5, y - 10, 2, 2, '#35304a'); }
     px(sx - 8, y - 6, 17, 1, '#35304a'); px(sx - 8, y - 3, 17, 1, '#35304a');
@@ -1064,7 +1181,41 @@ function drawKnight(p) {
   else { px(x + d * 3 + (d > 0 ? 0 : -1), y - 6, 1, 5, '#e8eef8'); }
 }
 
-const DRAW_PERSON = { person: drawPerson, zombie: drawZombie, knight: drawKnight };
+// A little brain person: a pink brain on stubby legs.
+const BRAIN_COLORS = ['#ff9ec4', '#ffb08a', '#c9a2ff', '#8fd8ff', '#a6e88f'];
+function drawLittleBrain(p) {
+  const x = Math.round(p.x - camX), y = Math.round(p.floorY);
+  if (x < -10 || x > W + 10) return;
+  const step = Math.floor(frame / (p.scared ? 4 : 10)) % 2, fold = 'rgba(110,30,90,0.5)';
+  px(x - 2, y - 3, 1, 3 - step, '#5a3a6e'); px(x + 1, y - 3, 1, 2 + step, '#5a3a6e');
+  ellipse(x, y - 7, 5, 4, BRAIN_COLORS[p.hue]);
+  px(x, y - 10, 1, 4, fold); px(x - 3, y - 8, 2, 1, fold); px(x + 2, y - 6, 2, 1, fold); px(x - 3, y - 6, 2, 1, fold);
+  px(x - 2, y - 7, 1, 2, '#222'); px(x + 1, y - 7, 1, 2, '#222'); // eyes
+  if (p.scared) { px(x - 6, y - 9 - step, 1, 3, BRAIN_COLORS[p.hue]); px(x + 6, y - 9 - step, 1, 3, BRAIN_COLORS[p.hue]); px(x - 1, y - 5, 2, 1, '#222'); }
+}
+
+const DRAW_PERSON = { person: drawPerson, zombie: drawZombie, knight: drawKnight, brain: drawLittleBrain };
+
+// Synapse: two neurons with an electric arc that jumps between them (off: faint glow, warn: yellow sparks, on: deadly).
+function drawSynapse([, x, w, phase]) {
+  const sx = Math.round(x - camX), st = gateState(phase);
+  if (sx > W + 10 || sx + w < -10) return;
+  const light = { off: '#7df0ff', warn: '#ffd23f', on: '#ffffff' }[st];
+  if (st === 'on') {
+    px(sx, 126, w, GROUND_Y - 126, `rgba(125,240,255,${frame % 4 < 2 ? 0.3 : 0.2})`);
+    for (let i = 0; i < w; i += 2) { // jagged bolt, re-rolled every frame
+      const j = ((i * 13 + frame * 7) % 11) - 5;
+      px(sx + i, 138 + j, 3, 3, '#7df0ff'); px(sx + i, 139 + j, 2, 1, '#fff');
+    }
+  } else if (st === 'warn') {
+    for (let i = 0; i < w; i += 7) if ((frame + i) % 6 < 3) px(sx + i + 2, 134 + ((i * 5) % 9), 2, 2, '#ffd23f');
+  } else for (let i = 4; i < w; i += 9) px(sx + i, 144, 1, 1, 'rgba(125,240,255,0.5)');
+  for (const nx of [sx, sx + w]) { // the neurons
+    px(nx - 2, GROUND_Y - 10, 5, 10, '#7b3f9e'); disc(nx, GROUND_Y - 13, 4, '#b86fe0');
+    px(nx - 1, GROUND_Y - 14, 2, 2, light);
+    px(nx - 7, GROUND_Y - 4, 4, 1, '#7b3f9e'); px(nx + 4, GROUND_Y - 4, 4, 1, '#7b3f9e');
+  }
+}
 
 // Lasers. Gates are off (green lights), warn (yellow lights, dotted beam), or on (red beam, deadly).
 function drawLaser(l) {
@@ -1083,6 +1234,7 @@ function drawLaser(l) {
     px(sx - 5, GROUND_Y - 6, 10, 6, '#3a3550'); px(sx - 1, GROUND_Y - 5, 2, 2, light);
     return;
   }
+  if (l[0] === 'synapse') return drawSynapse(l);
   const [, x, w, phase] = l, sx = Math.round(x - camX), y = Math.round(sweepY(phase));
   if (sx > W + 10 || sx + w < -10) return;
   px(sx - 1, 84, 2, GROUND_Y - 84, '#3a3550'); px(sx + w - 1, 84, 2, GROUND_Y - 84, '#3a3550'); // rails
@@ -1106,12 +1258,13 @@ function drawBoss() {
   if (!boss || boss.dead) return;
   // the portcullis that drops behind you
   if (boss.active && boss.wall > 0) {
-    const bottom = Math.round(GROUND_Y * boss.wall), x = Math.round(BOSS_WALL[0] - camX);
+    const bottom = Math.round(GROUND_Y * boss.wall), x = Math.round(bossWall()[0] - camX);
     px(x, 0, 12, bottom, '#2a2738');
     for (let k = 0; k < 12; k += 4) px(x + k, 0, 2, bottom, '#6a728c');
     for (let y = 10; y < bottom; y += 18) px(x, y, 12, 2, '#6a728c');
   }
   const shake = boss.state === 'roar' && frame % 4 < 2 ? 1 : 0;
+  if (LEVEL.boss.type === 'brain') return drawBigBrain(shake);
   const bx = Math.round(boss.x - camX) + shake, y = GROUND_Y, d = boss.dir;
   if (bx < -40 || bx > W + 40) return;
   if (boss.invul > 0 && (frame >> 2) % 2) return; // blinks while dazed
@@ -1152,6 +1305,58 @@ function drawBoss() {
   }
 }
 
+// The Big Brain: a huge pink brain hovering over the arena (top at y - bossHeight, the part you land on), with an angry
+// face and a dangling stalk. Charging up: it crackles and warning columns show where lightning will land.
+function drawBigBrain(shake) {
+  const bx = Math.round(boss.x - camX) + shake, d = boss.dir, hover = Math.round(Math.sin(frame * 0.07) * 2);
+  const y = GROUND_Y + hover, cy = y - 44, charging = boss.state === 'windup', zapping = boss.state === 'swing';
+  // lightning columns: dotted while the warning is on, a solid bolt while zapping
+  for (const wx of boss.strikes) {
+    const sx = Math.round(wx - camX);
+    if (zapping) {
+      px(sx - 6, -100, 12, GROUND_Y + 100, `rgba(125,240,255,${frame % 4 < 2 ? 0.4 : 0.28})`);
+      for (let yy = -100; yy < GROUND_Y; yy += 4) px(sx - 2 + (((yy * 7 + frame * 5) % 5) - 2), yy, 3, 4, yy % 8 ? '#7df0ff' : '#fff');
+    } else {
+      const late = boss.timer <= TUNE.brainLock; // locked on: the warning gets brighter and denser
+      for (let yy = 0; yy < GROUND_Y; yy += late ? 6 : 10) px(sx, yy, 1, 3, late ? '#ffd23f' : 'rgba(255,210,63,0.6)');
+      px(sx - 6, GROUND_Y - 2, 12, 2, late ? 'rgba(255,210,63,0.9)' : 'rgba(255,210,63,0.4)');
+    }
+  }
+  if (boss.invul > 0 && (frame >> 2) % 2) return; // blinks while dazed
+  const base = charging && frame % 6 < 3 ? '#ffc2dc' : '#ff9ec4', fold = 'rgba(120,30,90,0.55)';
+  // stalk and wiggling tendrils underneath
+  for (let k = 0; k < 6; k++) px(bx - 3 + (k % 2) + Math.round(Math.sin(frame * 0.1 + k) * 2), y - 26 + k * 2, 6, 2, '#e8607f');
+  for (const t of [-18, -9, 10, 19]) { px(bx + t, y - 27, 2, 4 + (Math.abs(t) % 3), '#e8607f'); px(bx + t, y - 23 + (Math.abs(t) % 3), 2, 1, '#ffc2dc'); }
+  // the brain itself: two lobes, wrinkly folds
+  ellipse(bx, cy + 1, 31, 21, '#c8527f');
+  ellipse(bx, cy, 30, 20, base);
+  px(bx, cy - 20, 1, 22, fold); // the line between the two halves
+  for (let k = -2; k <= 1; k++) for (let i = -27; i <= 27; i++) {
+    const py = cy + k * 8 + 2 + Math.round(Math.sin(i * 0.5 + k * 2) * 2), edge = (i / 30) ** 2 + ((py - cy) / 20) ** 2;
+    if (edge < 0.8 && Math.abs(i) > 1 && !(py > cy - 3 && py < cy + 12 && Math.abs(i) < 14)) px(bx + i, py, 1, 1, fold);
+  }
+  px(bx - 18, cy - 12, 10, 2, '#ffd0e4'); px(bx - 20, cy - 9, 2, 3, '#ffd0e4'); // shine
+  // angry face on the front
+  const ex = d * 2;
+  px(bx - 16 + ex, cy + 3, 11, 9, '#fff'); px(bx + 5 + ex, cy + 3, 11, 9, '#fff');
+  px(bx - 12 + ex + d * 2, cy + 6, 4, 5, charging || zapping ? '#ff3b4f' : '#2a1030'); px(bx + 9 + ex + d * 2, cy + 6, 4, 5, charging || zapping ? '#ff3b4f' : '#2a1030');
+  for (let k = 0; k < 11; k++) { px(bx - 16 + ex + k, cy + Math.floor(k / 3), 1, 2, '#6a1d4d'); px(bx + 5 + ex + k, cy + Math.floor((10 - k) / 3), 1, 2, '#6a1d4d'); } // angry brows, slanting down toward the middle
+  px(bx - 8 + ex, cy + 15, 16, 2, '#6a1d4d'); // mouth
+  if (charging || zapping) for (let k = 0; k < 7; k++) { // crackling sparks over the brain
+    const a = frame * 0.4 + k * 0.9;
+    px(bx + Math.cos(a) * (14 + k * 2), cy - 8 + Math.sin(a * 1.3) * 12, 2, 2, k % 2 ? '#7df0ff' : '#fff');
+  }
+  if (charging) text('!', bx, y - 76, '#ff5a5a', 'center', 14);
+  if (boss.state === 'hurt') for (let k = 0; k < 3; k++) { // dazed stars circling the top
+    const a = frame * 0.15 + k * 2.1;
+    px(bx + Math.cos(a) * 18, y - 70 + Math.sin(a) * 4, 3, 3, '#ffd23f');
+  }
+  if (boss.active && boss.invul <= 0 && ['walk', 'recover', 'swing'].includes(boss.state)) { // bouncing arrow: "land here!"
+    const bob = Math.round(Math.sin(frame * 0.15) * 3);
+    for (let r = 0; r < 4; r++) px(bx - 3 + r, y - 92 + r + bob, 7 - 2 * r, 1, '#ffd23f');
+  }
+}
+
 function drawBossHud() {
   if (!boss || !boss.active || boss.dead) return;
   const cfg = LEVEL.boss;
@@ -1160,7 +1365,7 @@ function drawBossHud() {
   for (let i = 0; i < cfg.hp; i++) px(W / 2 - 40 + i * 27, 34, 26, 6, i < boss.hp ? '#e8303a' : '#4a2a33');
   if (bossIntro > 0) {
     text('BOSS FIGHT!', W / 2, 56, '#ff5a5a', 'center', 12);
-    text('Jump off a ledge and land on his head!', W / 2, 67, '#fff', 'center', 7);
+    text(cfg.tip || 'Jump off a ledge and land on his head!', W / 2, 67, '#fff', 'center', 7);
   }
 }
 
@@ -1199,6 +1404,7 @@ function drawDecal(d) {
   const x = Math.round(d.x - camX);
   if (x < -10 || x > W + 10) return;
   if (LEVEL.kind === 'knight') { px(x - 5, d.y - 1, 10, 1, '#9fb1cf'); px(x - 1, d.y - 2, 3, 1, '#c8d2e6'); px(x + 3, d.y - 2, 2, 1, '#e8303a'); return; }
+  if (LEVEL.kind === 'brain') { px(x - 5, d.y - 1, 10, 1, '#ff9ec4'); px(x - 2, d.y - 2, 4, 1, '#ffc2dc'); px(x + 3, d.y - 2, 2, 1, '#c9a2ff'); return; }
   if (LEVEL.kind === 'zombie') { px(x - 5, d.y - 1, 10, 1, '#86c97e'); px(x - 2, d.y - 2, 4, 1, '#9be07a'); px(x + 3, d.y - 2, 2, 1, '#eaeaea'); return; }
   px(x - 4, d.y - 1, 8, 1, SHIRTS[d.hue]); px(x - 2, d.y - 2, 4, 1, '#ffd8b0');
 }
@@ -1243,7 +1449,7 @@ function draw() {
   ctx.save();
   const sh = shake > 0 ? Math.min(2, Math.ceil(shake / 4)) * (frame % 2 ? 1 : -1) : 0;
   ctx.translate(sh, topPad - Math.round(camY)); // the world layer: scrolls down when you go underground, shakes on a smash
-  px(0, -topPad - 100, W, topPad + 100, { day: '#8fd3ff', night: '#0b1030', castle: '#16121f' }[LEVEL.theme]); // sky above the world (portrait)
+  px(0, -topPad - 100, W, topPad + 100, { day: '#8fd3ff', night: '#0b1030', castle: '#16121f', brain: '#2a0d2e' }[LEVEL.theme]); // sky above the world (portrait)
   drawBackground();
   drawPits();
   drawCavity();
@@ -1251,7 +1457,7 @@ function draw() {
   LEVEL.decor.forEach(drawDecor);
   LEVEL.checkpoints.forEach((cp) => drawFlag(cp, spawnX >= cp ? '#4fe36b' : '#999'));
   if (LEVEL.goalX) drawFlag(LEVEL.goalX, '#ffd23f');
-  if (LEVEL.boss) { // red carpet into the arena (not over the sand patch)
+  if (LEVEL.underground) { // red carpet into the arena (not over the sand patch)
     px(LEVEL.boss.arenaLeft - 12 - camX, GROUND_Y - 1, 3228 - LEVEL.boss.arenaLeft + 12, 1, '#a3212e');
     px(3284 - camX, GROUND_Y - 1, 108, 1, '#a3212e');
   }
@@ -1302,7 +1508,7 @@ function draw() {
     text('Press jump to start', W / 2, 118, '#fff', 'center');
   } else if (state === 'win' || state === 'gameover') {
     px(PANEL_X, 52, W - 2 * PANEL_X, 70, 'rgba(0,0,0,0.55)');
-    const title = state === 'gameover' ? 'GAME OVER' : LEVEL.boss ? 'YOU SAVED THE BABY ROCK!' : lastLevel ? 'YOU BEAT THE GAME!' : 'LEVEL CLEAR!';
+    const title = state === 'gameover' ? 'GAME OVER' : LEVEL.underground ? 'YOU SAVED THE BABY ROCK!' : lastLevel ? 'YOU BEAT THE GAME!' : 'LEVEL CLEAR!';
     text(title, W / 2, 78, state === 'win' ? '#4fe36b' : '#ff6b6b', 'center', title.length > 20 ? 12 : 16);
     text('Squished ' + squished + ' of ' + LEVEL.people.length, W / 2, 98, '#fff', 'center');
     text(state === 'win' && !lastLevel ? 'Press jump for the next level' : state === 'win' ? 'Press jump to play again' : 'Press jump to try again', W / 2, 112, '#ccc', 'center');
