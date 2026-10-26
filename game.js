@@ -140,7 +140,7 @@ const LEVELS = [{
   underground: {
     x0: 3200, maxCamY: 100, floorY: 236, babyX: 3243, chamberX: 3228, chamberW: 56, tunnelY: 212, babyR: 6, smashHint: 'sand',
     lines: [
-      { who: 'boulder', text: "I'm so glad I freed you!", time: 170 },
+      { who: 'boulder', text: "You're safe now, buddy!", time: 170 },
       { who: 'baby', text: 'Ah goo a gah!', time: 130 },
       { who: 'boulder', text: 'We need to get out of here before more stuff chases us!', time: 230 },
     ],
