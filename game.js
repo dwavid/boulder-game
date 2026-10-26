@@ -872,7 +872,8 @@ function ellipse(cx, cy, rx, ry, c) {
 function disc(cx, cy, r, c) {
   ctx.fillStyle = c;
   for (let dy = -r; dy <= r; dy++) {
-    const half = Math.floor(Math.sqrt(r * r - dy * dy + 0.5));
+    // bigger discs measure to r + 0.5 so the top, bottom and sides are flat instead of a single-pixel "spike"
+    const half = Math.floor(Math.sqrt(r >= 3 ? (r + 0.5) ** 2 - dy * dy : r * r - dy * dy + 0.5));
     ctx.fillRect(Math.round(cx) - half, Math.round(cy) + dy, half * 2 + 1, 1);
   }
 }
