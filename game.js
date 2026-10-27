@@ -690,6 +690,13 @@ function spawnBurst(x, y, colors, n, power = 1.6) {
   }
 }
 
+// A few bubbles drifting up from (x, y); Watertopia's version of a puff of dust.
+function spawnBubbles(x, y, n) {
+  for (let i = 0; i < n; i++) {
+    particles.push({ x: x + (Math.random() - 0.5) * 12, y: y - Math.random() * 4, vx: 0, vy: -rand(0.3, 0.6), life: 50 + Math.random() * 40, size: Math.random() < 0.5 ? 4 : 3, bubble: true, phase: Math.random() * 6 });
+  }
+}
+
 function die() {
   if (ending) return; // nothing can hurt you during the ending
   deadTimer = 70;
@@ -777,6 +784,7 @@ function updateBoulder() {
   }
   if (b.jumpBuf > 0 && b.coyote > 0) {
     b.vy = -T.jump; b.coyote = 0; b.jumpBuf = 0; b.onGround = false; sfx.jump();
+    if (LEVEL.theme === 'water') spawnBubbles(b.x, b.y + r, 3);
   }
   if (!c.jump && b.vy < -2.2 && !b.smashing) b.vy = -2.2; // release early = short hop
   b.jumpBuf--;
@@ -786,6 +794,7 @@ function updateBoulder() {
   b.x += b.vx; b.y += b.vy;
   b.x = Math.max(r, b.x);
 
+  const wasOnGround = b.onGround, fallSpeed = b.vy;
   b.onGround = false;
   const wasSmashing = b.smashing;
   let onBrick = false;
@@ -816,6 +825,10 @@ function updateBoulder() {
       && Math.abs(boss.tailSide) > 0.6 && Math.abs(b.x - genieTail()) < 26) { // ground pound on the Water Genie's tail
       hurtBoss(); b.vy = -T.jump * 0.7; b.onGround = false; b.coyote = 0;
     }
+  }
+  if (b.onGround && !wasOnGround && !wasSmashing && fallSpeed > 1.5 && !ending) { // landed from a regular jump: a small puff
+    if (LEVEL.theme === 'water') spawnBubbles(b.x, b.y - 2, 4);
+    else spawnBurst(b.x, b.y + r, ['#c9c4d8', '#9a96ae', '#ffffff'], 4, 0.7);
   }
   if (onBrick) { // the locked brick floor: the key opens it
     if (hasKey && !ending) startEnding();
@@ -2112,4 +2125,4 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // Test hook for automated checks (harmless in the browser).
-window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, get boss() { return boss; }, get ending() { return ending; }, get hasKey() { return hasKey; }, get key() { return key; }, get baby() { return baby; }, get camY() { return camY; }, get solids() { return solids; }, get menuOpen() { return menuOpen; }, gateState, sweepY, laserHits, input, update };
+window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get particles() { return particles; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, get boss() { return boss; }, get ending() { return ending; }, get hasKey() { return hasKey; }, get key() { return key; }, get baby() { return baby; }, get camY() { return camY; }, get solids() { return solids; }, get menuOpen() { return menuOpen; }, gateState, sweepY, laserHits, input, update };

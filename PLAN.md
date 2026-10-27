@@ -17,6 +17,7 @@
 - [x] Level 3: the Castle (brick halls with torches and banners, knights with red feathers, laser gates and sweeping lasers instead of spikes)
 - [x] Boss: the Giant Knight at the end of the Castle (land on his head from the ledges; his sword only reaches the ground)
 - [x] Smash move: jump, then press down (▼ button on phones) to ground-pound; breaks sand (reusable for other smashable things)
+- [x] Landing puffs: a small dust splash when you land from a jump; in Watertopia, bubbles float up when you jump and land
 - [x] Level 3 ending: the boss drops a key, smash the sand, unlock the brick floor and cage, free the baby rock, and roll off together
 - [x] Portrait mode on phones: tall, narrow view with the buttons underneath (landscape unchanged)
 - [x] Level 4: Braintopia (inside a brain: little brains instead of people, blinking synapse zaps, and the Big Brain boss who calls down lightning columns)
