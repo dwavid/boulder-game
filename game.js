@@ -1084,6 +1084,10 @@ function updateEnding() {
     b.face = baby.x > b.x ? 1 : -1; baby.face = -b.face; // they look at each other while they talk
     if (line.who === 'baby' && e.t % 34 === 2) baby.vy = -2.2; // the baby hops while it talks
     if (line.who === 'baby' && u.babyBubbles && frame % 12 === 0) sfx.bubble(); // blub, in time with its mouth
+    if (u.babyBubbles && frame % 6 === 0 && isTalking(line.who)) { // little bubbles float up from the speaker's mouth
+      const [mx, my] = line.who === 'baby' ? [baby.x + baby.face * 3, baby.y + (u.babyR < 6 ? 2 : 3)] : [b.x + b.face * 4, b.y + 4];
+      particles.push({ x: mx, y: my, vx: 0, vy: -rand(0.3, 0.5), life: 70 + Math.random() * 30, size: Math.random() < 0.4 ? 4 : 3, bubble: true, phase: Math.random() * 6 });
+    }
     if (skip && e.t > 15) { e.line++; e.t = 0; if (e.line >= u.lines.length) next('rollOut'); }
   } else if (e.step === 'rollOut') { // both roll off to the right through the tunnel
     c.right = true;
@@ -1101,7 +1105,10 @@ function updateBaby() {
 }
 
 function updateFx() {
-  for (const q of particles) { q.x += q.vx; q.y += q.vy; q.vy += 0.1; q.life--; }
+  for (const q of particles) {
+    if (q.bubble) { q.y += q.vy; q.x += Math.sin(q.life * 0.2 + q.phase) * 0.25; q.life--; continue; } // bubbles drift up with a wobble, no gravity
+    q.x += q.vx; q.y += q.vy; q.vy += 0.1; q.life--;
+  }
   particles = particles.filter((q) => q.life > 0);
   for (const f of floaters) { f.y -= 0.3; f.life--; }
   floaters = floaters.filter((f) => f.life > 0);
@@ -2025,7 +2032,12 @@ function draw() {
   drawBoulder();
   if (ending && ending.key.show) drawKey(ending.key.x - camX, ending.key.y);
   ghosts.forEach(drawGhost);
-  for (const q of particles) px(q.x - camX, q.y, q.size, q.size, q.color);
+  for (const q of particles) {
+    if (!q.bubble) { px(q.x - camX, q.y, q.size, q.size, q.color); continue; }
+    const bx = Math.round(q.x - camX), by = Math.round(q.y), n = q.size, c = q.life < 12 ? 'rgba(200,240,255,0.5)' : 'rgba(200,240,255,0.9)'; // a little ring
+    px(bx + 1, by, n - 2, 1, c); px(bx + 1, by + n - 1, n - 2, 1, c); px(bx, by + 1, 1, n - 2, c); px(bx + n - 1, by + 1, 1, n - 2, c);
+    px(bx + 1, by + 1, 1, 1, '#fff');
+  }
   for (const f of floaters) text(f.text, f.x - camX, f.y, '#fff', 'center');
   ctx.restore();
 
