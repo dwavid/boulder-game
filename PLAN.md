@@ -13,7 +13,7 @@
 - [x] Spikes and pits cost a life, with checkpoints
 - [x] Lives, score, win/game-over screens
 - [x] Keyboard and touch controls (phone friendly)
-- [x] Gamepad support (stick/D-pad to move, A or Start to jump, D-pad down or shoulder to smash)
+- [x] Gamepad support (stick/D-pad to move, A/B to jump, X/Y to smash)
 - [x] Level 2: the Graveyard (night, zombies that shamble toward you, slow floating ghosts instead of spikes)
 - [x] Level 3: the Castle (brick halls with torches and banners, knights with red feathers, laser gates and sweeping lasers instead of spikes)
 - [x] Boss: the Giant Knight at the end of the Castle (land on his head from the ledges; his sword only reaches the ground)
