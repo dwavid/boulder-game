@@ -31,6 +31,7 @@ A browser side-scroller called BOULD (the name the owner's 4-year-old picked): y
 - Level 3 arena is the last piece of the level (width 3400); a level with a boss has no `goalX`: its ending script calls `state = 'win'`.
 - Pits are drawn automatically as the gaps between ground pieces (`drawPits`: dark void, glowing bottom, mist). Keep pits <= 60px wide.
 - Zooming is blocked on purpose (iPad Safari ignores `user-scalable=no`): the `// No zooming` block in `game.js` cancels pinch gestures, double-tap and trackpad pinch, and the CSS sets `touch-action: none`. Keep new touch handling compatible with that (use pointer events; don't rely on `click` or double-tap).
+- Sound: all synthesized with Web Audio (no sound files). Helpers `beep` / `tone` / `noise` and the `sfx` table are at the top of the Sound section. Lasers, synapses and vents charge up when they enter their 30-frame warning and fire when they turn deadly (`HAZARD_SFX`, triggered from `updateHazardSound`, quieter the farther away you are); sweep beams hum, with the pitch following the beam. The Big Brain has its own `sfx.brainCharge` (1.25s, matches `TUNE.brainWindup`) and `sfx.brainZap`. Music is a small step sequencer (`MUSIC`: `calm` for levels, `boss` while a boss fight is active); add a track there and pick it in `musicTick`. Notes are MIDI numbers (60 = middle C), 0 = rest. M or the SOUND label mutes (remembered in localStorage).
 - Kid-friendly: squishing is cartoony (stars and confetti, no gore).
 
 ## Running and testing

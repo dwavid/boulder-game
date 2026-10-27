@@ -24,6 +24,7 @@
 - [x] Level 5: Watertopia (underwater: little water monsters, and hydrothermal vents that bubble, glow, then shoot a scalding column you wait out)
 - [x] Level 5 boss: the Water Genie (horns, chained wrists, shoots water bolts; ground pound his tail to hurt him)
 - [x] Level progression: beat a level to unlock the next; game over retries the same level
+- [x] Sound: cartoony squish, charge-up and zap/laser/whoosh sounds for lasers, synapses and vents, calm chiptune loop, boss loop, mute (M)
 
 ## Ideas backlog (add yours here!)
 - [ ] Level 5 and beyond (ideas: ice cave, lava, candy land, space) and a proper level select screen
@@ -33,7 +34,7 @@
 - [ ] Power-ups (rocket boulder, bouncy boulder)
 - [ ] Bosses for levels 1 and 2 (ideas: a giant ghost, a zombie king)
 - [ ] Better title screen, boulder name, and a high-score list
-- [ ] Music
+- [ ] Different music for each level (so far: one calm loop for every level and one intense boss loop)
 - [ ] Hand-drawn pixel sprites (swap the code-drawn art for spritesheets)
 
 ## How we work
