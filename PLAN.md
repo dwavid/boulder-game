@@ -23,6 +23,7 @@
 - [x] Level 4 ending: the Big Brain drops a key, smash the pile of bones, unlock the bone floor and bone cage, free an even smaller baby pebble (who talks about synapses)
 - [x] Level 5: Watertopia (underwater: little water monsters, and hydrothermal vents that bubble, glow, then shoot a scalding column you wait out)
 - [x] Level 5 boss: the Water Genie (horns, chained wrists, shoots water bolts; ground pound his tail to hurt him)
+- [x] Level 5 ending: the Water Genie drops a key, smash the coral, unlock the coral floor and coral cage, free another baby rock (who only says "blublub bublub bub bubble lub blub"; real dialogue still to come)
 - [x] Level progression: beat a level to unlock the next; game over retries the same level
 - [x] Sound: cartoony squish, charge-up and zap/laser/whoosh sounds for lasers, synapses and vents, calm chiptune loop, boss loop, mute (M)
 

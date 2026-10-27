@@ -212,11 +212,18 @@ const LEVELS = [{
   tune: { gravity: 0.2, jump: 5.1, maxSpeed: 1.8, accel: 0.3, airAccel: 0.22, friction: 0.2, fallGravity: 0.07, maxFall: 1.8 },
   width: 3400,
   solids: [
-    [0, GROUND_Y, 640, 30], [690, GROUND_Y, 560, 30], [1305, GROUND_Y, 700, 30], [2060, GROUND_Y, 520, 30], [2635, GROUND_Y, 765, 30],
+    [0, GROUND_Y, 640, 30], [690, GROUND_Y, 560, 30], [1305, GROUND_Y, 700, 30], [2060, GROUND_Y, 520, 30],
+    // The arena floor, same layout as the castle's: smashable coral, a locked floor made of coral, then a chamber with the baby
+    // rock in a coral cage and a tunnel out. The arena itself is flat (the genie's tail lies on the ground) with a wall at the end.
+    [2635, GROUND_Y, 593, 150],
+    [3228, GROUND_Y, 56, 16, 'sand'],              // smashable coral (type 'sand' is "smashable"; only once the genie is beaten)
+    [3228, 166, 56, 12, 'brick'],                  // locked floor of coral (the key opens it)
+    [3284, GROUND_Y, 116, 62],
+    [3228, 236, 372, 64],
+    [3231, 212, 24, 24, 'cage'],                   // the coral cage holding the baby rock
     // coral platforms and steps
     [360, 112, 80, 8], [900, 108, 80, 8], [1700, 132, 30, 18], [1730, 114, 30, 36], [2320, 110, 70, 8],
-    // boss arena: flat ground (the genie's tail lies on it) and a wall at the end
-    [3392, 0, 8, GROUND_Y],
+    [3392, 0, 8, GROUND_Y],                        // wall at the end of the arena
   ],
   // hydrothermal vents (in the lasers list): ['vent', x, phase] bubbles (off), glows orange (warning), then shoots a column
   // of scalding water far too tall to jump over (deadly). Wait for it to go off, then roll across.
@@ -238,6 +245,17 @@ const LEVELS = [{
   boss: {
     name: 'THE WATER GENIE', type: 'genie', x: 3254, hp: 3, arenaLeft: 3092, arenaRight: 3392, camX: 3080, zoneMin: 3180, zoneMax: 3330,
     tip: 'Jump, then press DOWN on his tail! Dodge the water!', colors: ['#2a8ad0', '#5fb4f0', '#ffffff', '#bfe8ff'],
+  },
+  // The baby rock only says bubbly noises (babyBubbles plays a blub sound while it talks). The lines are placeholders.
+  underground: {
+    x0: 3200, maxCamY: 100, floorY: 236, babyX: 3243, chamberX: 3228, chamberW: 56, tunnelY: 212, babyR: 5, smashHint: 'coral', babyBubbles: true,
+    lines: [
+      { who: 'boulder', text: 'Another baby rock! I found you!', time: 170 },
+      { who: 'baby', text: 'Blublub bublub bub bubble lub blub!', time: 230 },
+      { who: 'boulder', text: '...Was that a thank you?', time: 150 },
+      { who: 'baby', text: 'Bub bub blub!', time: 130 },
+      { who: 'boulder', text: "Let's get out of here!", time: 170 },
+    ],
   },
 }];
 
@@ -444,6 +462,7 @@ const sfx = {
   die: () => beep(400, 0.5, 'sawtooth', 0.06, -350),
   win: () => { beep(523, 0.15); setTimeout(() => beep(659, 0.15), 120); setTimeout(() => beep(784, 0.3), 240); },
   checkpoint: () => beep(700, 0.15, 'triangle', 0.06, 300),
+  bubble: () => { const r = rand(0.8, 1.4); tone('sine', 260 * r, 700 * r, 0.09, 0.09, 0.03); tone('sine', 520 * r, 1300 * r, 0.05, 0.03, 0.01, 0.03); }, // a little "blub"
   // Big Brain: a 1.25s charge-up (matches TUNE.brainWindup) that crackles faster and faster, with four tense ticks once
   // the warning columns lock on, then a thunder-crack strike.
   brainCharge: () => {
@@ -731,9 +750,9 @@ const bossWall = () => [LEVEL.boss.arenaLeft - 16, 0, 12, GROUND_Y]; // drops be
 // Smashable pieces of level are solids with a 5th entry, 'sand'. Smashing one removes it.
 function smashSolid(sd) {
   solids = solids.filter((o) => o !== sd);
-  const bones = LEVEL.theme === 'brain';
-  spawnBurst(sd[0] + sd[2] / 2, sd[1] + 2, bones ? ['#f4efe0', '#d8d0b8', '#b8ae94', '#ffffff'] : ['#e3c276', '#f0d890', '#c9a75a', '#ffffff'], 26, 2);
-  spawnBurst(boulder.x, sd[1], bones ? ['#f4efe0', '#d8d0b8'] : ['#e3c276', '#f0d890'], 12, 1.6);
+  const bits = { brain: ['#f4efe0', '#d8d0b8', '#b8ae94', '#ffffff'], water: ['#ff8fa0', '#ffb3bd', '#e07388', '#ffffff'] }[LEVEL.theme] || ['#e3c276', '#f0d890', '#c9a75a', '#ffffff'];
+  spawnBurst(sd[0] + sd[2] / 2, sd[1] + 2, bits, 26, 2);
+  spawnBurst(boulder.x, sd[1], bits.slice(0, 2), 12, 1.6);
   shake = 10; beep(120, 0.3, 'sawtooth', 0.07, -70);
   floaters.push({ x: sd[0] + sd[2] / 2, y: sd[1] - 12, text: 'SMASH!', life: 40 });
 }
@@ -779,7 +798,7 @@ function updateBoulder() {
     let nx, ny, pen;
     if (d2 > 0.0001) { const d = Math.sqrt(d2); nx = dx / d; ny = dy / d; pen = r - d; }
     else { nx = 0; ny = -1; pen = r + (b.y - sy); }
-    if (type === 'sand' && b.smashing && ny < -0.5) { smashSolid(sd); b.vy = Math.min(b.vy, 5); continue; } // smashed!
+    if (type === 'sand' && b.smashing && ny < -0.5 && (!boss || boss.dead)) { smashSolid(sd); b.vy = Math.min(b.vy, 5); continue; } // smashed!
     if (type === 'brick' && ny < -0.6) onBrick = true;
     b.x += nx * pen; b.y += ny * pen;
     const vn = b.vx * nx + b.vy * ny;
@@ -1064,6 +1083,7 @@ function updateEnding() {
     const line = u.lines[e.line];
     b.face = baby.x > b.x ? 1 : -1; baby.face = -b.face; // they look at each other while they talk
     if (line.who === 'baby' && e.t % 34 === 2) baby.vy = -2.2; // the baby hops while it talks
+    if (line.who === 'baby' && u.babyBubbles && frame % 12 === 0) sfx.bubble(); // blub, in time with its mouth
     if (skip && e.t > 15) { e.line++; e.t = 0; if (e.line >= u.lines.length) next('rollOut'); }
   } else if (e.step === 'rollOut') { // both roll off to the right through the tunnel
     c.right = true;
@@ -1326,8 +1346,19 @@ function drawBonePile(sx, y, w, h) {
   px(sx, y + h - 1, w, 1, '#b8ae94');
 }
 
+// The smashable pile of coral in Watertopia (same job as the sand)
+function drawCoralPile(sx, y, w, h) {
+  px(sx, y, w, h, '#e07388');
+  for (let i = 0; i < w; i += 7) {
+    px(sx + i + 1, y + 1 + ((i / 7) % 2) * 3, 4, h - 2, '#ff9aa8'); px(sx + i + 1, y + 1 + ((i / 7) % 2) * 3, 1, h - 2, '#ffc2cb');
+    px(sx + i, y + ((i / 7) % 2) * 2, 2, 2, '#ffc2cb'); px(sx + i + 4, y + 2 + ((i / 7) % 2) * 2, 2, 2, '#ffc2cb'); // little branch tips
+  }
+  px(sx, y + h - 1, w, 1, '#b84a62');
+}
+
 function drawSand(sx, y, w, h) {
   if (LEVEL.theme === 'brain') return drawBonePile(sx, y, w, h);
+  if (LEVEL.theme === 'water') return drawCoralPile(sx, y, w, h);
   px(sx, y, w, h, '#e3c276');
   for (let i = 0; i < w; i += 4) px(sx + i, y, 4, 2 + ((i / 4) % 2), '#f0d890'); // bumpy top
   for (let i = 0; i < w; i += 3) for (let j = 4; j < h; j += 5) if ((i * 5 + j * 11) % 7 < 2) px(sx + i, y + j, 1, 1, '#c9a75a');
@@ -1336,13 +1367,18 @@ function drawSand(sx, y, w, h) {
 
 // The locked floor under the sand: two brick halves with a padlock. When the key opens it they slide apart into the walls.
 function drawBrick(sx, y, w, h) {
-  const boneFloor = LEVEL.theme === 'brain';
+  const boneFloor = LEVEL.theme === 'brain', coralFloor = LEVEL.theme === 'water';
   const p = ending ? ending.floorOpen : 0, half = w / 2, slide = Math.round(p * half);
   ctx.save(); ctx.beginPath(); ctx.rect(sx, y, w, h); ctx.clip(); // the halves vanish into the walls, not over them
   const bricks = (x0, w0) => {
     if (boneFloor) { // the locked floor is a layer of bones laid side by side
       px(x0, y, w0, h, '#8f866c');
       for (let r = 0; r < 2; r++) for (let k = (r % 2) * 6; k < w0; k += 12) bone(x0 + k, y + 2 + r * 5, 12, false);
+      return;
+    }
+    if (coralFloor) { // the locked floor is a layer of coral branches
+      px(x0, y, w0, h, '#9a3f58');
+      for (let r = 0; r < 2; r++) for (let k = (r % 2) * 4; k < w0; k += 8) { px(x0 + k, y + 1 + r * 5, 6, 4, r ? '#d9667a' : '#e07388'); px(x0 + k, y + 1 + r * 5, 6, 1, '#ffb3bd'); }
       return;
     }
     px(x0, y, w0, h, '#8a4f3b'); px(x0, y, w0, 1, '#b06a52');
@@ -1411,7 +1447,7 @@ function drawCavity() {
   const u = LEVEL.underground;
   if (!u) return;
   const sx = Math.round(u.chamberX - camX);
-  const dark = LEVEL.theme === 'brain' ? '#1c0a22' : '#120e1a';
+  const dark = { brain: '#1c0a22', water: '#0a2238' }[LEVEL.theme] || '#120e1a';
   px(sx, 178, u.chamberW, u.floorY - 178, dark); px(sx + u.chamberW, u.tunnelY, 130, u.floorY - u.tunnelY, dark);
   for (let y = 182; y < u.floorY; y += 8) for (let x = sx + ((y / 8) % 2) * 6; x < sx + u.chamberW; x += 12) px(x, y, 1, 8, '#1d1727');
   for (let y = 186; y < u.floorY; y += 8) px(sx, y, u.chamberW, 1, '#1d1727');
@@ -1460,6 +1496,9 @@ function drawCage() {
   if (LEVEL.theme === 'brain') { // a cage of bones
     for (let i = 1; i < w; i += 6) bone(x + i, y + 2, h - 4, true);
     bone(x - 1, y - 1, w + 2, false); bone(x - 1, y + h - 3, w + 2, false);
+  } else if (LEVEL.theme === 'water') { // a cage of coral branches
+    for (let i = 1; i < w; i += 6) { px(x + i, y + 2, 3, h - 4, '#ff7a8a'); px(x + i, y + 2, 1, h - 4, '#ffb3bd'); }
+    px(x - 1, y - 1, w + 2, 3, '#d9667a'); px(x - 1, y + h - 2, w + 2, 3, '#d9667a');
   } else {
     for (let i = 0; i < w; i += 5) px(x + i, y, 2, h, '#9aa3bd');
     px(x - 1, y, w + 2, 3, '#6a728c'); px(x - 1, y + h - 2, w + 2, 2, '#6a728c');
