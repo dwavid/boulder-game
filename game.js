@@ -48,6 +48,11 @@ const TUNE = {
   brainZap: 18, // frames the lightning columns stay deadly
   maxFall: 7, // fastest the boulder falls (not counting a smash)
   brainRest: 70, // frames it waits before the next attack
+  genieSpeed: 0.5, // the Water Genie floats toward you this fast (0.1 faster after each hit)
+  genieWindup: 55, // frames he gathers water (dotted lines show where it will fly) before shooting
+  genieShotGap: 55, // frames between the shots in a volley
+  genieShotSpeed: 1.8, // how fast the water bolts fly
+  genieRest: 60, // frames he rests after a volley
 };
 
 // ---------- Level ----------
@@ -205,11 +210,13 @@ const LEVELS = [{
   // underwater: slower, drifty and floaty (jump apex ~65px instead of ~52)
   // falling is extra slow (fallGravity and maxFall) so you sink like in water
   tune: { gravity: 0.2, jump: 5.1, maxSpeed: 1.8, accel: 0.3, airAccel: 0.22, friction: 0.2, fallGravity: 0.07, maxFall: 1.8 },
-  width: 3100,
+  width: 3400,
   solids: [
-    [0, GROUND_Y, 640, 30], [690, GROUND_Y, 560, 30], [1305, GROUND_Y, 700, 30], [2060, GROUND_Y, 520, 30], [2635, GROUND_Y, 465, 30],
+    [0, GROUND_Y, 640, 30], [690, GROUND_Y, 560, 30], [1305, GROUND_Y, 700, 30], [2060, GROUND_Y, 520, 30], [2635, GROUND_Y, 765, 30],
     // coral platforms and steps
     [360, 112, 80, 8], [900, 108, 80, 8], [1700, 132, 30, 18], [1730, 114, 30, 36], [2320, 110, 70, 8],
+    // boss arena: flat ground (the genie's tail lies on it) and a wall at the end
+    [3392, 0, 8, GROUND_Y],
   ],
   // hydrothermal vents (in the lasers list): ['vent', x, phase] bubbles (off), glows orange (warning), then shoots a column
   // of scalding water far too tall to jump over (deadly). Wait for it to go off, then roll across.
@@ -225,8 +232,13 @@ const LEVELS = [{
     [1950, GROUND_Y, 1900, 1990], [2110, GROUND_Y, 2070, 2130], [2355, 110, 2325, 2385], [2300, GROUND_Y, 2240, 2420],
     [2540, GROUND_Y, 2500, 2570], [2680, GROUND_Y, 2650, 2720], [2830, GROUND_Y, 2790, 2870], [2980, GROUND_Y, 2940, 3010],
   ],
-  checkpoints: [725, 1330, 2080, 2670],
-  goalX: 3030,
+  checkpoints: [725, 1330, 2080, 2670, 3010],
+  // The Water Genie: he floats, with his tail lying on the ground, and shoots water bolts. The only way to hurt him is to
+  // ground pound (jump, then press down) on the tail. No goalX and no underground: beating him wins the level.
+  boss: {
+    name: 'THE WATER GENIE', type: 'genie', x: 3254, hp: 3, arenaLeft: 3092, arenaRight: 3392, camX: 3080, zoneMin: 3180, zoneMax: 3330,
+    tip: 'Jump, then press DOWN on his tail! Dodge the water!', colors: ['#2a8ad0', '#5fb4f0', '#ffffff', '#bfe8ff'],
+  },
 }];
 
 // Scenery scattered on solid ground; drawn behind everything.
@@ -435,7 +447,7 @@ function resetRun() {
 }
 function respawn() {
   if (boss) Object.assign(boss, { // the fight starts over when you respawn, but damage you've done stays
-    x: LEVEL.boss.x, dir: -1, state: 'idle', timer: 0, invul: 0, active: false, wall: 0, target: 0, strikes: [],
+    x: LEVEL.boss.x, dir: -1, state: 'idle', timer: 0, invul: 0, active: false, wall: 0, target: 0, strikes: [], shots: [], lanes: [], queue: [], nextShot: 0, tailSide: 1,
   });
   boulder = { x: spawnX, y: GROUND_Y - 30, vx: 0, vy: 0, rot: 0, onGround: false, coyote: 0, jumpBuf: 0, face: 1, age: 0 };
   for (const g of ghosts) { [g.x, g.y] = ghostHome(g); g.chase = false; } // ghosts go back to their patrol
@@ -580,6 +592,10 @@ function updateBoulder() {
   if (b.onGround && wasSmashing) { // landed from a smash: thud and dust
     b.smashing = false; shake = 8; beep(90, 0.18, 'square', 0.07, -40);
     spawnBurst(b.x, b.y + r, ['#c9c4d8', '#9a96ae', '#ffffff'], 10, 1.3);
+    if (boss && boss.active && !boss.dead && LEVEL.boss.type === 'genie' && boss.state !== 'roar' && boss.invul <= 0
+      && Math.abs(boss.tailSide) > 0.6 && Math.abs(b.x - genieTail()) < 26) { // ground pound on the Water Genie's tail
+      hurtBoss(); b.vy = -T.jump * 0.7; b.onGround = false; b.coyote = 0;
+    }
   }
   if (onBrick) { // the locked brick floor: the key opens it
     if (hasKey && !ending) startEnding();
@@ -590,7 +606,7 @@ function updateBoulder() {
   b.rot += b.vx / r;
 
   // landing on the boss's head from above (the only way to hurt him); you bounce off either way
-  if (boss && boss.active && !boss.dead && b.vy > 0) {
+  if (boss && boss.active && !boss.dead && b.vy > 0 && LEVEL.boss.type !== 'genie') {
     const headTop = GROUND_Y - TUNE.bossHeight;
     if (prevBottom <= headTop + 3 && b.y + r >= headTop && Math.abs(b.x - boss.x) < (LEVEL.boss.hitW || 22)) {
       b.y = headTop - r - 1; b.vy = -T.jump * 0.85; b.onGround = false; b.coyote = 0; b.smashing = false;
@@ -671,8 +687,9 @@ function updatePeople() {
 function hurtBoss() {
   boss.hp--;
   boss.invul = TUNE.bossHurt; boss.state = 'hurt'; boss.timer = TUNE.bossHurt;
-  spawnBurst(boss.x, GROUND_Y - TUNE.bossHeight, LEVEL.boss.colors || ['#c8d2e6', '#ffffff', '#e8303a', '#ffd23f'], 22, 2.2);
-  floaters.push({ x: boss.x, y: GROUND_Y - TUNE.bossHeight - 14, text: boss.hp > 0 ? 'OUCH!' : 'DEFEATED!', life: 60 });
+  const genie = LEVEL.boss.type === 'genie', fx = genie ? genieTail() : boss.x, fy = genie ? GROUND_Y - 8 : GROUND_Y - TUNE.bossHeight; // the genie is hurt at his tail
+  spawnBurst(fx, fy, LEVEL.boss.colors || ['#c8d2e6', '#ffffff', '#e8303a', '#ffd23f'], 22, 2.2);
+  floaters.push({ x: fx, y: fy - 14, text: boss.hp > 0 ? 'OUCH!' : 'DEFEATED!', life: 60 });
   beep(160, 0.35, 'sawtooth', 0.08, -90);
   if (boss.hp <= 0) {
     boss.dead = true; boss.timer = 150;
@@ -686,7 +703,7 @@ function updateBoss() {
   const b = boulder, cfg = LEVEL.boss;
   if (boss.dead) {
     boss.timer--;
-    boss.strikes = [];
+    boss.strikes = []; boss.shots = [];
     if (!LEVEL.underground) { if (boss.timer <= 0) { state = 'win'; sfx.win(); } } // no secret ending: beating the boss wins
     else if (boss.timer === 80) { // after the explosion, he drops a key
       key = { x: boss.x, y: GROUND_Y - TUNE.bossHeight, vy: -2.5, rest: false };
@@ -700,11 +717,13 @@ function updateBoss() {
   }
   boss.wall = Math.min(1, boss.wall + 1 / 25); // the portcullis drops behind you
   if (boss.invul > 0) boss.invul--;
+  if (cfg.type === 'genie') { updateGenieShots(); boss.tailSide += clamp(-boss.dir - boss.tailSide, -0.05, 0.05); } // the tail swings round behind him
   boss.timer--;
   const dx = b.x - boss.x, reach = TUNE.bossReach;
   const nearGround = b.y + TUNE.radius > 124; // sword only reaches low: ledges and jumps over it are safe
   if (boss.state === 'roar' || boss.state === 'hurt') { if (boss.timer <= 0) { boss.state = 'walk'; boss.timer = 40; } }
   else if (cfg.type === 'brain') updateBigBrain();
+  else if (cfg.type === 'genie') updateGenie();
   else if (boss.state === 'walk') {
     boss.dir = dx >= 0 ? 1 : -1;
     const speed = TUNE.bossSpeed + (cfg.hp - boss.hp) * 0.1;
@@ -747,6 +766,45 @@ function updateBigBrain() {
   } else if (boss.state === 'recover') {
     if (boss.timer <= 0) { boss.state = 'walk'; boss.timer = 0; }
   }
+}
+
+// ----- The Water Genie -----
+// walk (floats toward you) -> windup (dotted lines show the lanes) -> swing (shoots a volley) -> recover.
+// Bolts fly along the ground ('low': jump over it) or at head height ('high': stay low). Only a ground pound on his tail hurts him.
+const genieTail = () => boss.x + boss.tailSide * 26; // center of the tail lying on the ground
+const GENIE_LANE_Y = { low: 140, high: 116 };
+
+function updateGenie() {
+  const b = boulder, cfg = LEVEL.boss, hits = cfg.hp - boss.hp, gap = TUNE.genieShotGap;
+  if (boss.state === 'walk') {
+    boss.dir = b.x >= boss.x ? 1 : -1;
+    const speed = TUNE.genieSpeed + hits * 0.1, tx = clamp(b.x - boss.dir * 40, cfg.zoneMin, cfg.zoneMax); // keeps a little distance
+    if (Math.abs(tx - boss.x) > speed) boss.x += Math.sign(tx - boss.x) * speed;
+    if (boss.timer <= 0) {
+      const n = Math.min(3, 1 + hits), low = Math.random() < 0.6 ? 1 : 0; // highs first, so you never have to dodge a high one while in the air
+      boss.lanes = [...Array(n - low).fill('high'), ...(low ? ['low'] : [])];
+      boss.state = 'windup'; boss.timer = TUNE.genieWindup;
+    }
+  } else if (boss.state === 'windup') {
+    if (boss.timer <= 0) { boss.state = 'swing'; boss.queue = boss.lanes.slice(); boss.nextShot = 0; boss.timer = boss.lanes.length * gap + 25; }
+  } else if (boss.state === 'swing') {
+    if (--boss.nextShot <= 0 && boss.queue.length) {
+      boss.shots.push({ x: boss.x + boss.dir * 22, y: GENIE_LANE_Y[boss.queue.shift()], vx: boss.dir * TUNE.genieShotSpeed });
+      boss.nextShot = gap; beep(260, 0.18, 'sine', 0.06, -140);
+    }
+    if (boss.timer <= 0) { boss.state = 'recover'; boss.timer = TUNE.genieRest; }
+  } else if (boss.state === 'recover') {
+    if (boss.timer <= 0) { boss.state = 'walk'; boss.timer = 35; }
+  }
+}
+
+function updateGenieShots() {
+  const b = boulder, cfg = LEVEL.boss, reach = TUNE.radius - 1 + 5;
+  for (const s of boss.shots) {
+    s.x += s.vx;
+    if (deadTimer === 0 && (b.x - s.x) ** 2 + (b.y - s.y) ** 2 < reach * reach) die();
+  }
+  boss.shots = boss.shots.filter((s) => s.x > cfg.arenaLeft - 12 && s.x < cfg.arenaRight);
 }
 
 // ----- The key, and the ending -----
@@ -1445,6 +1503,7 @@ function drawBoss() {
   }
   const shake = boss.state === 'roar' && frame % 4 < 2 ? 1 : 0;
   if (LEVEL.boss.type === 'brain') return drawBigBrain(shake);
+  if (LEVEL.boss.type === 'genie') return drawGenie(shake);
   const bx = Math.round(boss.x - camX) + shake, y = GROUND_Y, d = boss.dir;
   if (bx < -40 || bx > W + 40) return;
   if (boss.invul > 0 && (frame >> 2) % 2) return; // blinks while dazed
@@ -1534,6 +1593,72 @@ function drawBigBrain(shake) {
   if (boss.active && boss.invul <= 0 && ['walk', 'recover', 'swing'].includes(boss.state)) { // bouncing arrow: "land here!"
     const bob = Math.round(Math.sin(frame * 0.15) * 3);
     for (let r = 0; r < 4; r++) px(bx - 3 + r, y - 92 + r + bob, 7 - 2 * r, 1, '#ffd23f');
+  }
+}
+
+// The Water Genie: a blue genie with horns, iron cuffs and chains on his wrists, and a swirly tail that lies along the ground
+// (the part you ground pound). Charging: he gathers a ball of water and dotted lines show where the bolts will fly.
+function drawGenie(shake) {
+  const bx = Math.round(boss.x - camX) + shake, d = boss.dir, y = GROUND_Y, hover = Math.round(Math.sin(frame * 0.07) * 2);
+  const charging = boss.state === 'windup', shooting = boss.state === 'swing', hurt = boss.state === 'hurt';
+  const body = '#2a8ad0', light = '#5fb4f0', dark = '#1a5f9a';
+  // aiming lines (one per lane in the volley) while he charges: they get brighter just before he fires
+  if (charging) for (const lane of new Set(boss.lanes)) {
+    for (let k = 26; k < 320; k += 8) px(bx + d * k - (d < 0 ? 3 : 0), GENIE_LANE_Y[lane], 3, 1, boss.timer < 18 ? '#ffd23f' : 'rgba(255,210,63,0.55)');
+  }
+  for (const s of boss.shots) { // water bolts: a dark-rimmed ball with a trail of droplets
+    const sx = Math.round(s.x - camX), sy = s.y, dir = Math.sign(s.vx);
+    for (let k = 1; k <= 3; k++) px(sx - dir * (7 + k * 4), sy - 1 + ((k + frame) % 3) - 1, 3 - (k > 2 ? 1 : 0), 2, 'rgba(95,180,240,0.7)');
+    disc(sx, sy, 6, '#0a2a5a'); disc(sx, sy, 5, '#3aa0f0'); px(sx - 2, sy - 3, 2, 2, '#bfe8ff'); px(sx + 1, sy + 1, 2, 1, '#1a5f9a');
+  }
+  if (boss.invul > 0 && (frame >> 2) % 2) return; // blinks while dazed
+  // tail: the lower body swirls down and curls along the ground behind him
+  const ts = boss.tailSide, tl = Math.round(ts * 52), sg = tl < 0 ? -1 : 1;
+  for (let yy = y - 36; yy < y - 6; yy += 2) {
+    const t = (yy - (y - 36)) / 30, w = Math.round(22 - 16 * t), sway = Math.round(Math.sin(frame * 0.08 + yy * 0.2) * 2);
+    px(bx - w / 2 + sway, yy + hover * (1 - t), w, 2, t > 0.5 ? dark : body); px(bx - w / 2 + sway + 2, yy + hover * (1 - t), 2, 2, light);
+  }
+  for (let i = 0; i <= Math.abs(tl); i += 2) {
+    const t = i / 52, th = Math.max(2, Math.round(8 - 6 * t));
+    px(bx + sg * i - (sg < 0 ? 1 : 0), y - th, 2, th, body); px(bx + sg * i - (sg < 0 ? 1 : 0), y - th, 2, 1, light); px(bx + sg * i - (sg < 0 ? 1 : 0), y - 1, 2, 1, dark);
+  }
+  if (Math.abs(tl) > 30) { const tx = bx + tl; px(tx - (sg < 0 ? 0 : 2), y - 6 - ((frame >> 3) % 2), 2, 4, body); } // the tip flicks up
+  // torso, gold sash and shoulders
+  const ty = y - 58 + hover;
+  px(bx - 11, ty, 22, 24, body); px(bx - 11, ty, 22, 3, light); px(bx - 4, ty + 6, 8, 1, dark); px(bx, ty + 4, 1, 8, dark); px(bx - 12, ty + 20, 24, 4, '#d9b44a'); px(bx - 2, ty + 20, 4, 4, '#fff6b0');
+  // head with horns, glowing eyes and a mean grin
+  px(bx - 7, ty - 14, 14, 14, body); px(bx - 7, ty - 14, 14, 2, light);
+  for (const sd of [-1, 1]) { // curved dark horns
+    const hx = bx + sd * 8; px(hx - (sd < 0 ? 2 : 0), ty - 17, 3, 5, '#2a1a3a'); px(hx + sd * 2 - (sd < 0 ? 2 : 0), ty - 21, 3, 5, '#2a1a3a'); px(hx + sd * 4 - (sd < 0 ? 1 : 0), ty - 24, 2, 4, '#4a3260');
+  }
+  const eye = charging || shooting ? '#ff3b2f' : '#ff9a30';
+  px(bx - 5 + d, ty - 9, 3, 2, eye); px(bx + 2 + d, ty - 9, 3, 2, eye);
+  for (let k = 0; k < 4; k++) { px(bx - 6 + d + k, ty - 11 + (k > 1 ? 0 : 1), 1, 1, '#0a2a5a'); px(bx + 5 + d - k, ty - 11 + (k > 1 ? 0 : 1), 1, 1, '#0a2a5a'); } // angry brows
+  px(bx - 4 + d, ty - 4, 8, 2, '#0a2a5a'); if (charging || shooting) for (let k = 0; k < 4; k++) px(bx - 3 + d + k * 2, ty - 4, 1, 1, '#fff'); // fangs when angry
+  // arms: hang down, rise together to gather water, thrust forward to shoot, hold the head when dazed
+  const hands = hurt ? [[d * 11, -72], [-d * 11, -72]]
+    : charging ? [[d * 20, -60], [d * 17, -54]]
+    : shooting ? [[d * 27, -58], [d * 22, -52]]
+    : [[d * 16, -38 + Math.round(Math.sin(frame * 0.07) * 1)], [-d * 16, -38]];
+  hands.forEach(([hx, hy], i) => {
+    const sx0 = bx + (i ? -d : d) * 11, sy0 = ty + 4, hX = bx + hx, hY = y + hy + hover;
+    for (let k = 0; k <= 6; k++) px(sx0 + ((hX - sx0) * k) / 6 - 2, sy0 + ((hY - sy0) * k) / 6 - 2, 5, 5, k % 2 ? body : light); // arm
+    px(hX - 3, hY - 1, 6, 4, '#8a8fa0'); px(hX - 3, hY + 2, 6, 1, '#4a4f60'); // iron cuff on the wrist
+    for (let k = 0; k < 4; k++) px(hX - 1 + Math.round(Math.sin(frame * 0.1 + k + i) * 1), hY + 4 + k * 3, 2, 2, k % 2 ? '#c2c8d6' : '#6a7084'); // dangling chain
+  });
+  if (charging) { // the water ball swells in his hands
+    const r = 2 + Math.round(5 * (1 - boss.timer / TUNE.genieWindup)), wx = bx + d * 26, wy = y - 62 + hover;
+    disc(wx, wy, r + 1, '#0a2a5a'); disc(wx, wy, r, frame % 6 < 3 ? '#5fb4f0' : '#3aa0f0'); px(wx - 1, wy - r + 1, 2, 1, '#fff');
+    text('!', bx, y - 88, '#ff5a5a', 'center', 14);
+  }
+  if (hurt) for (let k = 0; k < 3; k++) { // dazed stars circling his head
+    const a = frame * 0.15 + k * 2.1;
+    px(bx + Math.cos(a) * 14, y - 88 + Math.sin(a) * 4, 3, 3, '#ffd23f');
+  }
+  if (boss.active && boss.invul <= 0 && Math.abs(ts) > 0.6 && boss.state !== 'roar') { // bouncing arrow over his tail: "ground pound here!"
+    const bob = Math.round(Math.sin(frame * 0.15) * 3), ax = bx + Math.round(ts * 26);
+    for (let r = 0; r < 4; r++) px(ax - 3 + r, y - 30 + r + bob, 7 - 2 * r, 1, '#ffd23f');
+    px(ax - 1, y - 34 + bob, 3, 4, '#ffd23f');
   }
 }
 
