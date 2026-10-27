@@ -354,6 +354,23 @@ addEventListener('keyup', (e) => {
   const n = keyMap[e.key];
   if (n) setInput(n, false);
 });
+// Gamepad (wired or Bluetooth): left stick or D-pad moves, A/B/X/Y or stick/D-pad up or Start jumps,
+// D-pad/stick down or a shoulder button smashes. Polled once per frame; it only calls setInput when the pad's own
+// state changes, so it never fights with the keyboard or touch buttons.
+const padWas = { left: false, right: false, jump: false, down: false };
+function pollGamepad() {
+  if (!navigator.getGamepads) return;
+  const now = { left: false, right: false, jump: false, down: false };
+  for (const p of navigator.getGamepads()) {
+    if (!p || !p.connected) continue;
+    const bt = (i) => !!(p.buttons[i] && p.buttons[i].pressed), ax = p.axes[0] || 0, ay = p.axes[1] || 0;
+    now.left = now.left || bt(14) || ax < -0.5;
+    now.right = now.right || bt(15) || ax > 0.5;
+    now.jump = now.jump || bt(0) || bt(1) || bt(2) || bt(3) || bt(9) || bt(12) || ay < -0.6;
+    now.down = now.down || bt(13) || bt(4) || bt(5) || ay > 0.6;
+  }
+  for (const n in now) if (now[n] !== padWas[n]) { padWas[n] = now[n]; setInput(n, now[n]); if (now[n]) audioInit(); }
+}
 document.querySelectorAll('#controls button').forEach((b) => {
   const n = b.dataset.key;
   const down = (e) => { e.preventDefault(); b.classList.add('on'); setInput(n, true); audioInit(); };
@@ -2117,6 +2134,7 @@ function loop(now) {
   // same number of updates instead of an uneven 0, 2, 1, 1 that looks like stutter.
   for (let k = 1; k <= 4; k++) if (Math.abs(dt - STEP / k) < STEP / k * 0.15) { dt = STEP / k; break; }
   acc += dt;
+  pollGamepad();
   let ran = false;
   while (acc >= STEP - 0.001) { update(); acc -= STEP; ran = true; }
   if (ran) draw(); // nothing changed otherwise, so skip the redraw (halves the work on 120Hz+ screens)
