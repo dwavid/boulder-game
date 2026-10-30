@@ -617,10 +617,8 @@ const HAZARD_SFX = {
     },
   },
 };
-// Volume falls off in a straight line to silence at HAZARD_RANGE screen widths away, so it scales with the screen (portrait is narrower):
-// loud right next to you, about half at the edge of the screen, silent a little beyond it.
-const HAZARD_RANGE = 1;
-const hazVol = (x) => clamp(1 - Math.abs(x - boulder.x) / (W * HAZARD_RANGE), 0, 1);
+const HAZARD_RANGE = 380; // px: farther than this a hazard is silent; roughly a screen away it's already clearly audible
+const hazVol = (x) => Math.pow(clamp(1 - Math.abs(x - boulder.x) / HAZARD_RANGE, 0, 1), 0.7);
 let hazPrev = [], hazLevel = null, sweepHum = null, hazBus = [];
 // Called every frame: starts the charge / fire sound when a hazard changes state, and keeps the sweeping beams humming.
 function updateHazardSound() {
