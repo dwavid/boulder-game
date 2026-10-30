@@ -53,6 +53,14 @@ const TUNE = {
   genieShotGap: 55, // frames between the shots in a volley
   genieShotSpeed: 1.8, // how fast the water bolts fly
   genieRest: 60, // frames he rests after a volley
+  stormSpeed: 0.5, // the Storm Cloud floats toward you this fast (0.08 faster after each hit)
+  stormWindup: 55, // frames he charges up; a dotted line follows you, then locks on for the last stormLock frames
+  stormLock: 30,
+  stormShotGap: 28, // frames between the lightning bolts in a volley (1 more bolt per hit, max 3)
+  stormShotSpeed: 2.2, // how fast his lightning bolts fly (the boulder's top speed is 2.2)
+  stormRest: 60, // frames he rests after a volley
+  stormStun: 120, // frames you're shocked (can't move) when you touch his bottom or sides: 2 seconds
+  stormStunGrace: 60, // frames after the shock wears off when he can't shock you again
 };
 
 // ---------- Level ----------
@@ -257,6 +265,59 @@ const LEVELS = [{
       { who: 'boulder', text: "Let's get out of here!", time: 170 },
     ],
   },
+}, {
+  name: 'CLOUD WORLD', theme: 'sky', kind: 'cloud', hint: 'Squish the clouds. Dodge the storm clouds!',
+  width: 3400,
+  solids: [
+    // cloud banks with gaps of open sky between them (falling through is a pit)
+    [0, GROUND_Y, 640, 30], [690, GROUND_Y, 560, 30], [1305, GROUND_Y, 700, 30], [2060, GROUND_Y, 520, 30],
+    // The arena floor, same layout as the castle's: a crackling lightning wall you can smash (jump, then press down), then a
+    // locked cloud floor, then a chamber with the baby pebble in an electric cage and a tunnel out.
+    [2635, GROUND_Y, 593, 150],
+    [3228, GROUND_Y, 56, 16, 'sand'],              // the lightning wall (type 'sand' is "smashable"; only once the Storm Cloud is beaten)
+    [3228, 166, 56, 12, 'brick'],                  // locked floor of storm cloud (the key opens it)
+    [3284, GROUND_Y, 116, 62],
+    [3228, 236, 372, 64],
+    [3231, 212, 24, 24, 'cage'],                   // the electric cage holding the baby pebble
+    // cloud platforms and steps
+    [420, 112, 80, 8], [960, 108, 70, 8], [1700, 132, 30, 18], [1730, 114, 30, 36], [2330, 110, 70, 8],
+    // boss arena: a ledge on each side (his top is too high to reach from the ground) and a wall at the end
+    [3112, 112, 64, 8], [3336, 112, 48, 8], [3392, 0, 8, GROUND_Y],
+  ],
+  // storm clouds (these are the "ghosts"): [centerX, centerY, patrolRange, phase]. They float back and forth, drift toward you
+  // when you come close, and zap you if you touch them. Jump over them.
+  ghosts: [
+    [250, 136, 36, 0], [850, 136, 30, 3], [1150, 136, 30, 1], [1480, 136, 36, 2],
+    [1900, 136, 36, 4], [2200, 136, 36, 0], [2500, 136, 30, 3], [2800, 136, 36, 1],
+  ],
+  // little clouds: [x, floorY, walkMin, walkMax]
+  people: [
+    [120, GROUND_Y, 80, 200], [330, GROUND_Y, 300, 380], [455, 112, 430, 490], [560, GROUND_Y, 530, 620],
+    [740, GROUND_Y, 705, 770], [920, GROUND_Y, 900, 950], [995, 108, 970, 1025], [1050, GROUND_Y, 1010, 1100],
+    [1220, GROUND_Y, 1190, 1240], [1380, GROUND_Y, 1340, 1420], [1620, GROUND_Y, 1580, 1660], [1745, 114, 1738, 1752],
+    [1810, GROUND_Y, 1780, 1840], [1970, GROUND_Y, 1950, 1995], [2130, GROUND_Y, 2090, 2160], [2365, 110, 2338, 2392],
+    [2310, GROUND_Y, 2270, 2420], [2570, GROUND_Y, 2550, 2575], [2690, GROUND_Y, 2650, 2730], [2900, GROUND_Y, 2880, 2960],
+  ],
+  checkpoints: [725, 1330, 2080, 2670, 3010],
+  // The Storm Cloud: a big thundercloud that floats over the arena and shoots lightning bolts at you. Touching his bottom or
+  // sides shocks you (you're stunned for 2 seconds, but it costs no life). The only way to hurt him is a ground pound
+  // (jump, then press down) landing on top of him. No goalX: his ending script wins the level.
+  boss: {
+    name: 'THE STORM CLOUD', type: 'storm', x: 3254, hp: 3, arenaLeft: 3092, arenaRight: 3392, camX: 3080, zoneMin: 3220, zoneMax: 3292,
+    tip: 'Leap off a ledge, then press DOWN on top of him!', colors: ['#555c7e', '#9aa3c4', '#ffd23f', '#fff6b0'],
+  },
+  underground: {
+    x0: 3200, maxCamY: 100, floorY: 236, babyX: 3243, chamberX: 3228, chamberW: 56, tunnelY: 212, babyR: 4, smashHint: 'lightning wall',
+    lines: [
+      { who: 'boulder', text: "Hey, lil' pebble! Let me guess, you can talk now?", time: 220 },
+      { who: 'baby', text: "I don't know. You tell me!", time: 160 },
+      { who: 'boulder', text: "So, I guess that's a 'yes'?", time: 160 },
+      { who: 'baby', text: "Dad, you know babies can't talk.", time: 170 },
+      { who: 'boulder', text: 'Then how are we talking?!', time: 150 },
+      { who: 'baby', text: "I know, right? Life's weird.", time: 160 },
+      { who: 'boulder', text: 'Man, I gotta stop going through these dimensional portals...', time: 230 },
+    ],
+  },
 }];
 
 // Scenery scattered on solid ground; drawn behind everything.
@@ -265,6 +326,7 @@ const DECOR_KINDS = {
   castle: ['barrel', 'brazier', 'crate', 'barrel', 'crate'],
   brain: ['neuron', 'coil', 'sprout', 'coil', 'neuron'],
   water: ['seaweed', 'coral', 'shell', 'seaweed', 'coral'],
+  sky: ['puff', 'rainbowlet', 'tuft', 'puff', 'rainbowlet'],
 };
 function genDecor(level) {
   const out = [];
@@ -495,6 +557,27 @@ const sfx = {
     tone('sine', 130, 36, 0.6, 0.3, 0); // thunder boom
     for (let i = 0; i < 16; i++) noise('bandpass', rand(1500, 6000), rand(600, 2500), 3, rand(0.02, 0.05), 0.1 * (1 - i / 16), 0, 0.12 + i * 0.03 + rand(0, 0.02)); // crackling tail
   },
+  // Storm Cloud: a ~0.9s charge-up (matches TUNE.stormWindup), a sharp zap for each bolt, a buzzing shock when you touch him,
+  // and far-off thunder with each flash of lightning in the background.
+  stormCharge: () => {
+    tone('sawtooth', 90, 1000, 0.9, 0.01, 0.06);
+    tone('sine', 55, 140, 0.9, 0.02, 0.14);
+    for (let i = 0; i < 22; i++) noise('highpass', rand(2500, 5500), 3000, 1, 0.03, 0.02 + 0.06 * i / 22, 0, 0.9 * (1 - (1 - i / 22) ** 2) + rand(0, 0.015));
+  },
+  stormShot: () => {
+    tone('sawtooth', 2600, 160, 0.2, 0.12, 0);
+    noise('bandpass', 5000, 900, 1.5, 0.18, 0.14, 0);
+    tone('square', 1500, 300, 0.1, 0.05, 0, 0.03);
+  },
+  zap: () => { // you got shocked
+    noise('lowpass', 8000, 600, 0.7, 0.35, 0.25, 0);
+    tone('sawtooth', 1800, 120, 0.4, 0.12, 0);
+    for (let i = 0; i < 14; i++) noise('bandpass', rand(1500, 6000), rand(800, 2500), 3, rand(0.02, 0.05), 0.09 * (1 - i / 14), 0, 0.05 + i * 0.045 + rand(0, 0.02));
+  },
+  thunder: () => {
+    noise('lowpass', 500, 70, 0.7, 1.3, 0.14, 0, 0.3);
+    tone('sine', 70, 28, 1.1, 0.12, 0, 0.3);
+  },
 };
 
 // ----- Hazard sounds: lasers, synapses and vents charge up when they enter their warning, then fire -----
@@ -643,10 +726,12 @@ const SQUISH_COLORS = {
   knight: ['#c8d2e6', '#ffffff', '#e8303a'],
   brain: ['#ff9ec4', '#ffffff', '#c9a2ff', '#8fd8ff'],
   monster: ['#2a8ad0', '#ffffff', '#7ac0ff', '#c9f5ff'],
+  cloud: ['#ffffff', '#bfe3ff', '#ffe3f1', '#fff6b0'],
 };
 
 // ---------- Game state ----------
 let state = 'title'; // title | play | win | gameover
+let storm = 0; // 0 = sunny sky, 1 = thunderstorm (fades in while the Storm Cloud fight is on)
 let boulder, people, ghosts, boss, bossIntro = 0, solids, hasKey, key, ending, baby, camY = 0, shake = 0, lockedHint = 0, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame = 0, introTimer = 0;
 
 // People never walk onto spikes or through lasers: trim each walk range at the nearest one on their floor.
@@ -677,15 +762,15 @@ function resetRun() {
   decals = [];
   boss = LEVEL.boss ? { hp: LEVEL.boss.hp, dead: false } : null;
   solids = LEVEL.solids.map((sd) => sd.slice()); // a copy, because smashing and unlocking remove pieces
-  hasKey = false; key = null; ending = null; camY = 0; shake = 0; lockedHint = 0;
+  hasKey = false; key = null; ending = null; camY = 0; shake = 0; lockedHint = 0; storm = 0;
   baby = LEVEL.underground ? { x: LEVEL.underground.babyX, y: LEVEL.underground.floorY - LEVEL.underground.babyR, vx: 0, vy: 0, rot: 0, free: false } : null;
   respawn();
 }
 function respawn() {
   if (boss) Object.assign(boss, { // the fight starts over when you respawn, but damage you've done stays
-    x: LEVEL.boss.x, dir: -1, state: 'idle', timer: 0, invul: 0, active: false, wall: 0, target: 0, strikes: [], shots: [], lanes: [], queue: [], nextShot: 0, tailSide: 1,
+    x: LEVEL.boss.x, dir: -1, state: 'idle', timer: 0, invul: 0, active: false, wall: 0, target: 0, strikes: [], shots: [], lanes: [], queue: [], nextShot: 0, tailSide: 1, aimX: 0, aimY: 0, locked: false, left: 0,
   });
-  boulder = { x: spawnX, y: GROUND_Y - 30, vx: 0, vy: 0, rot: 0, onGround: false, coyote: 0, jumpBuf: 0, face: 1, age: 0 };
+  boulder = { x: spawnX, y: GROUND_Y - 30, vx: 0, vy: 0, rot: 0, onGround: false, coyote: 0, jumpBuf: 0, face: 1, age: 0, stun: 0, shockGrace: 0 };
   for (const g of ghosts) { [g.x, g.y] = ghostHome(g); g.chase = false; } // ghosts go back to their patrol
   particles = []; floaters = []; deadTimer = 0;
   camX = Math.max(0, spawnX - W * 0.34);
@@ -773,7 +858,7 @@ const bossWall = () => [LEVEL.boss.arenaLeft - 16, 0, 12, GROUND_Y]; // drops be
 // Smashable pieces of level are solids with a 5th entry, 'sand'. Smashing one removes it.
 function smashSolid(sd) {
   solids = solids.filter((o) => o !== sd);
-  const bits = { brain: ['#f4efe0', '#d8d0b8', '#b8ae94', '#ffffff'], water: ['#ff8fa0', '#ffb3bd', '#e07388', '#ffffff'] }[LEVEL.theme] || ['#e3c276', '#f0d890', '#c9a75a', '#ffffff'];
+  const bits = { brain: ['#f4efe0', '#d8d0b8', '#b8ae94', '#ffffff'], water: ['#ff8fa0', '#ffb3bd', '#e07388', '#ffffff'], sky: ['#fff6b0', '#ffd23f', '#7df0ff', '#ffffff'] }[LEVEL.theme] || ['#e3c276', '#f0d890', '#c9a75a', '#ffffff'];
   spawnBurst(sd[0] + sd[2] / 2, sd[1] + 2, bits, 26, 2);
   spawnBurst(boulder.x, sd[1], bits.slice(0, 2), 12, 1.6);
   shake = 10; beep(120, 0.3, 'sawtooth', 0.07, -70);
@@ -784,7 +869,9 @@ function updateBoulder() {
   const b = boulder, r = TUNE.radius, prevBottom = b.y + r;
   const T = LEVEL.tune ? { ...TUNE, ...LEVEL.tune } : TUNE; // a level can override how the boulder moves (Watertopia: floaty)
   const c = ending ? ending.ctrl : input; // during the ending the boulder is moved by the script, not by you
-  const dir = (c.right ? 1 : 0) - (c.left ? 1 : 0);
+  const stunned = b.stun > 0; // shocked by the Storm Cloud: can't move, jump or smash until it wears off
+  if (stunned) { c.jumpPressed = false; c.downPressed = false; b.jumpBuf = 0; }
+  const dir = stunned ? 0 : (c.right ? 1 : 0) - (c.left ? 1 : 0);
   const acc = b.onGround ? T.accel : T.airAccel;
   if (dir) { b.vx += dir * acc; b.face = dir; }
   else if (b.onGround) {
@@ -802,7 +889,7 @@ function updateBoulder() {
     b.vy = -T.jump; b.coyote = 0; b.jumpBuf = 0; b.onGround = false; sfx.jump();
     if (LEVEL.theme === 'water') spawnBubbles(b.x, b.y + r, 3);
   }
-  if (!c.jump && b.vy < -2.2 && !b.smashing) b.vy = -2.2; // release early = short hop
+  if ((!c.jump || stunned) && b.vy < -2.2 && !b.smashing) b.vy = -2.2; // release early = short hop
   b.jumpBuf--;
 
   b.vy += b.vy > 0 && !b.smashing && T.fallGravity ? T.fallGravity : T.gravity; // a level can make falling gentler than rising
@@ -853,9 +940,14 @@ function updateBoulder() {
   b.coyote = b.onGround ? 6 : b.coyote - 1;
   b.age++;
   b.rot += b.vx / r;
+  if (b.stun > 0) { // shocked: sparks fly until it wears off, then a short grace period before he can shock you again
+    b.stun--;
+    if (frame % 4 === 0) spawnBurst(b.x, b.y, ['#ffd23f', '#fff6b0', '#7df0ff'], 3, 1.1);
+  } else if (b.shockGrace > 0) b.shockGrace--;
 
   // landing on the boss's head from above (the only way to hurt him); you bounce off either way
-  if (boss && boss.active && !boss.dead && b.vy > 0 && LEVEL.boss.type !== 'genie') {
+  if (boss && boss.active && !boss.dead && LEVEL.boss.type === 'storm') stormContact(prevBottom);
+  else if (boss && boss.active && !boss.dead && b.vy > 0 && LEVEL.boss.type !== 'genie') {
     const headTop = GROUND_Y - TUNE.bossHeight;
     if (prevBottom <= headTop + 3 && b.y + r >= headTop && Math.abs(b.x - boss.x) < (LEVEL.boss.hitW || 22)) {
       b.y = headTop - r - 1; b.vy = -T.jump * 0.85; b.onGround = false; b.coyote = 0; b.smashing = false;
@@ -936,7 +1028,8 @@ function updatePeople() {
 function hurtBoss() {
   boss.hp--;
   boss.invul = TUNE.bossHurt; boss.state = 'hurt'; boss.timer = TUNE.bossHurt;
-  const genie = LEVEL.boss.type === 'genie', fx = genie ? genieTail() : boss.x, fy = genie ? GROUND_Y - 8 : GROUND_Y - TUNE.bossHeight; // the genie is hurt at his tail
+  const genie = LEVEL.boss.type === 'genie', fx = genie ? genieTail() : boss.x; // the genie is hurt at his tail
+  const fy = genie ? GROUND_Y - 8 : LEVEL.boss.type === 'storm' ? STORM.top : GROUND_Y - TUNE.bossHeight;
   spawnBurst(fx, fy, LEVEL.boss.colors || ['#c8d2e6', '#ffffff', '#e8303a', '#ffd23f'], 22, 2.2);
   floaters.push({ x: fx, y: fy - 14, text: boss.hp > 0 ? 'OUCH!' : 'DEFEATED!', life: 60 });
   beep(160, 0.35, 'sawtooth', 0.08, -90);
@@ -967,12 +1060,14 @@ function updateBoss() {
   boss.wall = Math.min(1, boss.wall + 1 / 25); // the portcullis drops behind you
   if (boss.invul > 0) boss.invul--;
   if (cfg.type === 'genie') { updateGenieShots(); boss.tailSide += clamp(-boss.dir - boss.tailSide, -0.05, 0.05); } // the tail swings round behind him
+  if (cfg.type === 'storm') { updateStormShots(); if (frame % 260 === 3) sfx.thunder(); } // thunder rolls in after each flash in the sky
   boss.timer--;
   const dx = b.x - boss.x, reach = TUNE.bossReach;
   const nearGround = b.y + TUNE.radius > 124; // sword only reaches low: ledges and jumps over it are safe
   if (boss.state === 'roar' || boss.state === 'hurt') { if (boss.timer <= 0) { boss.state = 'walk'; boss.timer = 40; } }
   else if (cfg.type === 'brain') updateBigBrain();
   else if (cfg.type === 'genie') updateGenie();
+  else if (cfg.type === 'storm') updateStorm();
   else if (boss.state === 'walk') {
     boss.dir = dx >= 0 ? 1 : -1;
     const speed = TUNE.bossSpeed + (cfg.hp - boss.hp) * 0.1;
@@ -1054,6 +1149,79 @@ function updateGenieShots() {
     if (deadTimer === 0 && (b.x - s.x) ** 2 + (b.y - s.y) ** 2 < reach * reach) die();
   }
   boss.shots = boss.shots.filter((s) => s.x > cfg.arenaLeft - 12 && s.x < cfg.arenaRight);
+}
+
+// ----- The Storm Cloud -----
+// A big thundercloud floating over the arena (not solid: you can roll under him, his underside is at y 128 and you're 132+ on the ground).
+// - His top (y 88) is reachable only from the ledges. Landing on it with a smash (ground pound) hurts him; a normal landing just bounces.
+// - His bottom and sides shock you: stunned for TUNE.stormStun frames (can't move), but it costs no life.
+// - Attack: charge up (a dotted line follows you, then locks on), then shoot 1-3 lightning bolts along it, each aimed at where you were.
+const STORM = { top: 88, bottom: 128, half: 28, cy: 108 };
+
+function shockBoulder() {
+  const b = boulder, away = b.x >= boss.x ? 1 : -1;
+  b.stun = TUNE.stormStun; b.shockGrace = TUNE.stormStunGrace; b.smashing = false;
+  b.vx = away * 2.2; b.vy = b.y >= STORM.bottom - 4 ? 2.5 : -2.2; // from below you get knocked down, from the side you hop away
+  shake = 10; sfx.zap();
+  spawnBurst(b.x, b.y, ['#ffd23f', '#fff6b0', '#7df0ff', '#ffffff'], 20, 2);
+  floaters.push({ x: b.x, y: b.y - 16, text: 'ZAP!', life: 60 });
+}
+
+// Called every frame while the fight is on: ground pound on top, or shock from the bottom and sides.
+function stormContact(prevBottom) {
+  const b = boulder, r = TUNE.radius;
+  if (b.vy > 0 && prevBottom <= STORM.top + 3 && b.y + r >= STORM.top && Math.abs(b.x - boss.x) < STORM.half + 6) { // landed on top
+    const pound = b.smashing;
+    b.y = STORM.top - r - 1; b.vy = -TUNE.jump * 0.85; b.onGround = false; b.coyote = 0; b.smashing = false;
+    if (pound && boss.invul <= 0 && boss.state !== 'roar') { hurtBoss(); shake = 12; }
+    else {
+      beep(300, 0.1, 'square', 0.04, 200);
+      if (!pound && boss.invul <= 0 && !floaters.some((f) => f.text === 'PRESS DOWN!')) floaters.push({ x: b.x, y: b.y - 16, text: 'PRESS DOWN!', life: 50 });
+    }
+    return;
+  }
+  if (b.stun > 0 || b.shockGrace > 0 || boss.invul > 0 || boss.state === 'roar' || ending) return;
+  if (hitsCircleRect(b.x, b.y, r - 1, boss.x - STORM.half, STORM.top + 4, STORM.half * 2, STORM.bottom - STORM.top - 4)) shockBoulder();
+}
+
+function updateStorm() {
+  const b = boulder, cfg = LEVEL.boss, hits = cfg.hp - boss.hp, gap = TUNE.stormShotGap;
+  boss.dir = b.x >= boss.x ? 1 : -1;
+  if (b.stun > 0 && boss.state !== 'walk') { boss.state = 'walk'; boss.timer = 60; boss.shots = []; boss.locked = false; } // no cheap shots while you're stunned
+  if (boss.state === 'walk') {
+    const speed = TUNE.stormSpeed + hits * 0.08, tx = clamp(b.x, cfg.zoneMin, cfg.zoneMax);
+    if (Math.abs(tx - boss.x) > speed) boss.x += Math.sign(tx - boss.x) * speed;
+    if (b.stun > 0) boss.timer = Math.max(boss.timer, 50); // he waits a moment after the shock wears off
+    if (boss.timer <= 0) { boss.state = 'windup'; boss.timer = TUNE.stormWindup; boss.left = Math.min(3, 1 + hits); sfx.stormCharge(); }
+  } else if (boss.state === 'windup') {
+    boss.locked = boss.timer <= TUNE.stormLock;
+    if (!boss.locked) { boss.aimX = b.x; boss.aimY = b.y; }
+    if (boss.timer <= 0) { boss.state = 'swing'; boss.nextShot = 0; }
+  } else if (boss.state === 'swing') {
+    if (boss.nextShot > 0) { // between bolts the line shows up again and locks on just before the next one
+      boss.nextShot--; boss.locked = boss.nextShot <= 12;
+      if (!boss.locked) { boss.aimX = b.x; boss.aimY = b.y; }
+    }
+    if (boss.nextShot <= 0) {
+      const dx = boss.aimX - boss.x, dy = boss.aimY - STORM.cy, d = Math.hypot(dx, dy) || 1;
+      boss.shots.push({ x: boss.x, y: STORM.cy, vx: dx / d * TUNE.stormShotSpeed, vy: dy / d * TUNE.stormShotSpeed, age: 0 });
+      sfx.stormShot(); boss.left--; boss.locked = false; boss.nextShot = gap;
+      if (boss.left <= 0) { boss.state = 'recover'; boss.timer = TUNE.stormRest; }
+    }
+  } else if (boss.state === 'recover') {
+    boss.locked = false;
+    if (boss.timer <= 0) { boss.state = 'walk'; boss.timer = 35; }
+  }
+}
+
+function updateStormShots() {
+  const b = boulder, cfg = LEVEL.boss, reach = TUNE.radius - 1 + 4;
+  for (const s of boss.shots) {
+    s.x += s.vx; s.y += s.vy; s.age++;
+    if (deadTimer === 0 && (b.x - s.x) ** 2 + (b.y - s.y) ** 2 < reach * reach) die();
+    if (s.y >= GROUND_Y - 2) { s.dead = true; spawnBurst(s.x, GROUND_Y - 2, ['#ffd23f', '#fff6b0', '#ffffff'], 6, 1.2); } // fizzles out on the cloud floor
+  }
+  boss.shots = boss.shots.filter((s) => !s.dead && s.age < 200 && s.x > cfg.arenaLeft - 12 && s.x < cfg.arenaRight && s.y > -20);
 }
 
 // ----- The key, and the ending -----
@@ -1174,6 +1342,7 @@ function update() {
   const arenaCam = clamp(boulder.x - W / 2, LEVEL.boss ? LEVEL.boss.camX : 0, (LEVEL.boss ? LEVEL.boss.camX : 0) + 320 - W);
   const target = boss && boss.active ? arenaCam : clamp(boulder.x - W * 0.34, 0, LEVEL.width - W);
   if (bossIntro > 0 && state === 'play') bossIntro--;
+  storm += ((LEVEL.theme === 'sky' && boss && boss.active && !boss.dead && state === 'play' ? 1 : 0) - storm) * 0.04; // the sky turns stormy when the fight starts and clears when he's beaten
   // once you're underground the camera follows you down (it never scrolls vertically anywhere else)
   const un = LEVEL.underground, targetY = un && boulder.x > un.x0 ? clamp((boulder.y - 152) * 1.2, 0, un.maxCamY) : 0;
   camY += (targetY - camY) * 0.12;
@@ -1205,7 +1374,66 @@ function disc(cx, cy, r, c) {
 const hillH = (wx) => 28 + Math.sin(wx * 0.02) * 10 + Math.sin(wx * 0.047) * 5;
 
 function drawBackground() {
-  ({ day: drawDayBackground, night: drawNightBackground, castle: drawCastleBackground, brain: drawBrainBackground, water: drawWaterBackground })[LEVEL.theme]();
+  ({ day: drawDayBackground, night: drawNightBackground, castle: drawCastleBackground, brain: drawBrainBackground, water: drawWaterBackground, sky: drawSkyBackground })[LEVEL.theme]();
+}
+
+// Blend two '#rrggbb' colors: t = 0 gives a, t = 1 gives b.
+const mix = (a, b, t) => {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16), ch = (s) => Math.round(((pa >> s) & 255) * (1 - t) + ((pb >> s) & 255) * t);
+  return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+};
+
+// Cloud World: a blue sky with a sun, rainbows and drifting clouds. During the Storm Cloud fight (`storm` fades 0 -> 1) it turns
+// into a thunderstorm: dark sky, heavy clouds, rain, and flashes of lightning with a bolt far away.
+const SKY_DAY = ['#3d9bff', '#6cb8ff', '#9fd4ff', '#c9e8ff'], SKY_STORM = ['#0f111b', '#171a2a', '#212539', '#2c3150'];
+const skyTop = () => mix(SKY_DAY[0], SKY_STORM[0], storm);
+const RAINBOW = ['#ff5a5a', '#ff9a3c', '#ffe14d', '#5fd36b', '#4da6ff', '#7a5cff'];
+function drawSkyBackground() {
+  SKY_DAY.forEach((c, i) => px(0, i * 45, W, 45, mix(c, SKY_STORM[i], storm)));
+  const calm = 1 - storm;
+  if (calm > 0.02) {
+    ctx.globalAlpha = calm;
+    disc(262, 34, 24, 'rgba(255,245,170,0.3)'); disc(262, 34, 17, '#fff3a0'); disc(262, 34, 14, '#ffe970'); // sun
+    ctx.globalAlpha = calm * 0.7;
+    repeating(560, 0.25, (sx, i) => { // rainbows, far away
+      const cx = Math.round(sx + 280), cyy = GROUND_Y + 14, R = 96 + (i % 2) * 14;
+      for (let dx = -R; dx <= R; dx++) {
+        if (cx + dx < -1 || cx + dx > W) continue;
+        RAINBOW.forEach((c, k) => {
+          const rr = R - k * 3;
+          if (Math.abs(dx) >= rr) return;
+          const y0 = cyy - Math.sqrt(rr * rr - dx * dx), y1 = cyy - Math.sqrt(Math.max(0, rr * rr - (dx + 1) * (dx + 1)));
+          px(cx + dx, Math.min(y0, y1), 1, Math.max(3, Math.round(Math.abs(y1 - y0)) + 1), c);
+        });
+      }
+    });
+    ctx.globalAlpha = 1;
+  }
+  const cloud = mix('#ffffff', '#3b4060', storm), cloud2 = mix('#e9f4ff', '#2c3050', storm);
+  repeating(150, 0.15, (sx, i) => { // far clouds
+    const x = Math.round(sx + (i % 3) * 20 - frame * 0.1), y = 26 + ((i * 37) % 60);
+    ellipse(x, y + 2, 18, 5, cloud2); disc(x - 7, y - 1, 5, cloud2); disc(x + 3, y - 4, 7, cloud2); disc(x + 11, y, 5, cloud2);
+  });
+  repeating(210, 0.35, (sx, i) => { // nearer, bigger clouds
+    const x = Math.round(sx + (i % 2) * 40), y = 60 + ((i * 53) % 50);
+    ellipse(x, y + 3, 24, 6, cloud); disc(x - 10, y - 1, 7, cloud); disc(x + 3, y - 6, 10, cloud); disc(x + 15, y - 1, 7, cloud);
+  });
+  if (storm > 0.03) {
+    ctx.globalAlpha = storm;
+    repeating(64, 0.3, (sx, i) => disc(Math.round(sx + 30), 2 + (i % 3) * 5, 17, '#1b1e32')); // a heavy ceiling of thunderclouds
+    for (let i = 0; i < 70; i++) { // slanting rain
+      const y = (i * 31 + frame * 7) % WORLD_H, x = ((i * 53 - frame * 2 + y * 0.3 - camX * 0.5) % W + W) % W;
+      px(x, y, 1, 4, 'rgba(170,200,255,0.55)');
+    }
+    const f = frame % 260, n = Math.floor(frame / 260), bx = (n * 97) % (W - 40) + 20; // a flash of lightning with a bolt far away
+    if (f < 9) {
+      ctx.globalAlpha = storm * (f < 3 ? 0.45 : f < 6 ? 0 : 0.3);
+      px(0, -200, W, 500, '#ffffff');
+      ctx.globalAlpha = storm;
+      for (let y = 0, jx = 0; y < 110; y += 6, jx += ((y * 7 + n * 13) % 9) - 4) px(bx + jx, y, 2, 7, 'rgba(255,255,220,0.9)');
+    }
+    ctx.globalAlpha = 1;
+  }
 }
 
 // Under the sea: deep blue water, light rays from the surface, drifting seaweed and fish silhouettes, rising bubbles.
@@ -1364,6 +1592,7 @@ const SOLID_STYLE = {
     ground: ['#3a6f8c', '#2c5873', '#e6d29a', '#c3b078'], // seabed with a sandy top
     stone: ['#d9667a', '#b84a62', '#ff9aa8', '#e07388'], // coral
   },
+  sky: { ground: ['#f5f9ff', '#dbe7f7', '#ffffff', '#e4eefb'] }, // clouds (drawn by drawCloudSolid; the colors darken in the storm)
 };
 
 // A bone: a shaft with a knob on each end
@@ -1392,7 +1621,18 @@ function drawCoralPile(sx, y, w, h) {
   px(sx, y + h - 1, w, 1, '#b84a62');
 }
 
+// The smashable lightning wall in Cloud World (same job as the sand): a slab of dark storm cloud with bolts crackling through it
+function drawLightningWall(sx, y, w, h) {
+  px(sx, y, w, h, '#2b3050'); px(sx, y, w, 2, '#5a6390'); px(sx, y + h - 1, w, 1, '#1b1f38');
+  for (let i = 0; i < w; i += 8) { // bolts zig-zagging up and down through it, re-rolled a few times a second
+    const seed = (frame >> 2) + i * 3;
+    for (let k = 0; k < h; k += 2) px(sx + i + 2 + (((seed + k * 5) * 7) % 5) - 2, y + k, 2, 2, (k + (frame >> 2)) % 4 ? '#ffd23f' : '#fff6b0');
+  }
+  if ((frame >> 3) % 3 === 0) px(sx, y - 1, w, 1, 'rgba(255,240,150,0.6)');
+}
+
 function drawSand(sx, y, w, h) {
+  if (LEVEL.theme === 'sky') return drawLightningWall(sx, y, w, h);
   if (LEVEL.theme === 'brain') return drawBonePile(sx, y, w, h);
   if (LEVEL.theme === 'water') return drawCoralPile(sx, y, w, h);
   px(sx, y, w, h, '#e3c276');
@@ -1403,13 +1643,18 @@ function drawSand(sx, y, w, h) {
 
 // The locked floor under the sand: two brick halves with a padlock. When the key opens it they slide apart into the walls.
 function drawBrick(sx, y, w, h) {
-  const boneFloor = LEVEL.theme === 'brain', coralFloor = LEVEL.theme === 'water';
+  const boneFloor = LEVEL.theme === 'brain', coralFloor = LEVEL.theme === 'water', stormFloor = LEVEL.theme === 'sky';
   const p = ending ? ending.floorOpen : 0, half = w / 2, slide = Math.round(p * half);
   ctx.save(); ctx.beginPath(); ctx.rect(sx, y, w, h); ctx.clip(); // the halves vanish into the walls, not over them
   const bricks = (x0, w0) => {
     if (boneFloor) { // the locked floor is a layer of bones laid side by side
       px(x0, y, w0, h, '#8f866c');
       for (let r = 0; r < 2; r++) for (let k = (r % 2) * 6; k < w0; k += 12) bone(x0 + k, y + 2 + r * 5, 12, false);
+      return;
+    }
+    if (stormFloor) { // the locked floor is a layer of grey storm cloud puffs
+      px(x0, y, w0, h, '#6a7298');
+      for (let r = 0; r < 2; r++) for (let k = (r % 2) * 5; k < w0; k += 10) { disc(x0 + k + 4, y + 3 + r * 5, 4, r ? '#8b94b8' : '#a4acce'); }
       return;
     }
     if (coralFloor) { // the locked floor is a layer of coral branches
@@ -1438,6 +1683,7 @@ function drawSolid([x, y, w, h, type]) {
   if (type === 'sand') return drawSand(sx, y, w, h);
   if (type === 'brick') return drawBrick(sx, y, w, h);
   if (type === 'cage') return; // drawn together with the baby rock
+  if (LEVEL.theme === 'sky') return drawCloudSolid(x, sx, y, w, h);
   const st = SOLID_STYLE[LEVEL.theme];
   const [body, speck, top, shade] = st.stone && y !== GROUND_Y ? st.stone : st.ground;
   px(sx, y, w, h, body);
@@ -1448,11 +1694,28 @@ function drawSolid([x, y, w, h, type]) {
   px(sx, y + 3, w, 1, shade);
 }
 
+// Cloud World's solids are clouds: pale, with a bright top edge, soft swirls inside and little puffs sticking out of the sides
+// and underneath. (The puffs only stick out 2-3px, so the hitbox is still the plain rectangle.) They go grey in the storm.
+function drawCloudSolid(x, sx, y, w, h) {
+  const [body, speck, top, shade] = SOLID_STYLE.sky.ground, k = storm * 0.6;
+  const cBody = mix(body, '#8a92b2', k), cSpeck = mix(speck, '#6a7294', k), cTop = mix(top, '#b4bad4', k), cShade = mix(shade, '#9aa2c0', k);
+  px(sx, y, w, h, cBody);
+  for (let i = 0; i < w; i += 14) for (let j = 7; j < h; j += 9) { // little swirls
+    const o = ((i * 7 + j * 13 + x) | 0) % 5;
+    if (o < 2) { px(sx + i + o * 2, y + j, 5, 1, cSpeck); px(sx + i + o * 2 + 4, y + j + 1, 2, 1, cSpeck); }
+  }
+  px(sx, y, w, 2, cTop); px(sx, y + 2, w, 1, cShade);
+  const thin = h < 40; // platforms get a puffy underside; the tall banks only need puffs down their sides
+  if (thin) for (let i = 3; i < w; i += 9) ellipse(sx + i + 2, y + h, 5, 2, i % 2 ? cShade : cBody);
+  for (let j = thin ? 0 : 4; j < Math.min(h, 40); j += 9) { disc(sx, y + j + 3, 3, cBody); disc(sx + w - 1, y + j + 3, 3, cBody); }
+}
+
 // Pits are the gaps between ground pieces. Fill them with a dark void and a glowing bottom
 // so they're easy to spot against the background.
 let pitGround = null, pitGroundFor = null; // sorted ground pieces, cached per level (not rebuilt every frame)
 function drawPits() {
   const theme = LEVEL.theme, night = theme === 'night';
+  if (theme === 'sky') return; // the gaps between the clouds are just open sky
   if (pitGroundFor !== LEVEL) { pitGround = LEVEL.solids.filter((s) => s[1] === GROUND_Y).sort((a, b) => a[0] - b[0]); pitGroundFor = LEVEL; }
   const ground = pitGround;
   for (let i = 0; i < ground.length - 1; i++) {
@@ -1483,8 +1746,9 @@ function drawCavity() {
   const u = LEVEL.underground;
   if (!u) return;
   const sx = Math.round(u.chamberX - camX);
-  const dark = { brain: '#1c0a22', water: '#0a2238' }[LEVEL.theme] || '#120e1a';
-  px(sx, 178, u.chamberW, u.floorY - 178, dark); px(sx + u.chamberW, u.tunnelY, 130, u.floorY - u.tunnelY, dark);
+  const dark = { brain: '#1c0a22', water: '#0a2238', sky: '#2a3150' }[LEVEL.theme] || '#120e1a';
+  const top = LEVEL.theme === 'sky' ? GROUND_Y : 178; // in the sky the hole under the lightning wall would show the sky, so the dark goes all the way up
+  px(sx, top, u.chamberW, u.floorY - top, dark); px(sx + u.chamberW, u.tunnelY, 130, u.floorY - u.tunnelY, dark);
   for (let y = 182; y < u.floorY; y += 8) for (let x = sx + ((y / 8) % 2) * 6; x < sx + u.chamberW; x += 12) px(x, y, 1, 8, '#1d1727');
   for (let y = 186; y < u.floorY; y += 8) px(sx, y, u.chamberW, 1, '#1d1727');
   disc(sx + 28, 205, 26, 'rgba(255,170,80,0.05)'); // faint warm light
@@ -1532,6 +1796,10 @@ function drawCage() {
   if (LEVEL.theme === 'brain') { // a cage of bones
     for (let i = 1; i < w; i += 6) bone(x + i, y + 2, h - 4, true);
     bone(x - 1, y - 1, w + 2, false); bone(x - 1, y + h - 3, w + 2, false);
+  } else if (LEVEL.theme === 'sky') { // a cage of glowing electric bars
+    for (let i = 1; i < w; i += 6) { px(x + i - 1, y + 2, 5, h - 4, 'rgba(255,230,120,0.25)'); px(x + i, y + 2, 3, h - 4, '#ffd23f'); px(x + i + 1, y + 2, 1, h - 4, '#fff6b0'); }
+    px(x - 1, y - 1, w + 2, 3, '#8b94b8'); px(x - 1, y + h - 2, w + 2, 3, '#8b94b8');
+    if (frame % 10 < 5) for (let i = 4; i < w; i += 6) px(x + i, y + 4 + ((i * 7 + frame) % (h - 10)), 2, 2, '#ffffff'); // sparks
   } else if (LEVEL.theme === 'water') { // a cage of coral branches
     for (let i = 1; i < w; i += 6) { px(x + i, y + 2, 3, h - 4, '#ff7a8a'); px(x + i, y + 2, 1, h - 4, '#ffb3bd'); }
     px(x - 1, y - 1, w + 2, 3, '#d9667a'); px(x - 1, y + h - 2, w + 2, 3, '#d9667a');
@@ -1607,6 +1875,12 @@ function drawDecor([x, kind]) {
     px(sx - 1, y - 8, 1, 7, '#ffb3bd');
   } else if (kind === 'shell') {
     px(sx - 4, y - 5, 8, 5, '#f6d9e6'); px(sx - 3, y - 6, 6, 1, '#f6d9e6'); px(sx - 2, y - 5, 1, 5, '#d9a8c0'); px(sx + 1, y - 5, 1, 5, '#d9a8c0'); px(sx - 4, y - 1, 8, 1, '#d9a8c0');
+  } else if (kind === 'puff') { // a little bump of cloud fluff
+    disc(sx - 3, y - 2, 3, '#ffffff'); disc(sx + 2, y - 4, 4, '#ffffff'); disc(sx + 6, y - 2, 3, '#ffffff'); px(sx - 5, y - 1, 13, 2, '#e4eefb');
+  } else if (kind === 'tuft') { // wispy cloud tufts
+    for (let k = 0; k < 5; k++) px(sx - 5 + k * 3, y - 3 - (k % 2) * 2, 2, 3 + (k % 2) * 2, '#ffffff');
+  } else if (kind === 'rainbowlet') { // a tiny rainbow stuck in the cloud
+    RAINBOW.forEach((c, k) => { for (let dx = -(9 - k); dx <= 9 - k; dx++) { const yy = Math.round(Math.sqrt((9 - k) ** 2 - dx * dx)); px(sx + dx, y - yy, 1, 1, c); } });
   } else if (kind === 'fence') {
     for (let k = 0; k < 4; k++) { px(sx - 8 + k * 5, y - 8, 2, 8, '#35304a'); px(sx - 8 + k * 5, y - 10, 2, 2, '#35304a'); }
     px(sx - 8, y - 6, 17, 1, '#35304a'); px(sx - 8, y - 3, 17, 1, '#35304a');
@@ -1683,7 +1957,40 @@ function drawWaterMonster(p) {
   if (p.scared) { px(x - 7, y - 9 - step, 2, 3, c); px(x + 6, y - 9 - step, 2, 3, c); px(x - 1, y - 4, 2, 1, '#123'); }
 }
 
-const DRAW_PERSON = { person: drawPerson, zombie: drawZombie, knight: drawKnight, brain: drawLittleBrain, monster: drawWaterMonster };
+// A little cloud person: a fluffy white cloud with two tiny feet, a smile and rosy cheeks (pastel tints so they aren't all the same).
+const CLOUD_TINTS = ['#ffffff', '#fff0f6', '#eaf4ff', '#fff7d6', '#eaffef'];
+function drawCloudling(p) {
+  const x = Math.round(p.x - camX), y = Math.round(p.floorY);
+  if (x < -10 || x > W + 10) return;
+  const step = Math.floor(frame / (p.scared ? 4 : 10)) % 2, c = CLOUD_TINTS[p.hue], shade = '#c9d8ee';
+  px(x - 2, y - 2, 2, 2 - step, '#8aa0c8'); px(x + 1, y - 2, 2, 1 + step, '#8aa0c8'); // feet
+  disc(x - 3, y - 6, 3, c); disc(x + 3, y - 6, 3, c); disc(x - 1, y - 8, 4, c); disc(x + 2, y - 9, 3, c); // puffs
+  px(x - 5, y - 5, 10, 3, c); px(x - 4, y - 3, 8, 1, shade); // flat-ish bottom
+  px(x - 2, y - 7, 1, 2, '#223'); px(x + 1, y - 7, 1, 2, '#223'); // eyes
+  px(x - 3, y - 5, 1, 1, '#ffb3c8'); px(x + 3, y - 5, 1, 1, '#ffb3c8'); // cheeks
+  if (p.scared) { px(x - 7, y - 9 - step, 2, 3, c); px(x + 6, y - 9 - step, 2, 3, c); px(x - 1, y - 4, 2, 1, '#223'); } // arms up, little "o" mouth
+  else px(x - 1, y - 4, 2, 1, '#223');
+}
+
+// A storm cloud enemy (Cloud World's version of the ghost): a dark grumpy thundercloud with yellow eyes. When it's after you
+// it flashes and a bolt crackles underneath it.
+function drawStormCloud(g) {
+  const x = Math.round(g.x - camX), y = Math.round(g.y), face = g.face;
+  if (x < -20 || x > W + 20) return;
+  const body = g.chase && frame % 8 < 4 ? '#6b7396' : '#555c7e', shade = '#3e4462', hi = '#7b84a8';
+  disc(x, y, 12, g.chase ? 'rgba(255,230,120,0.2)' : 'rgba(120,130,170,0.14)'); // glow
+  ellipse(x, y + 2, 9, 4, shade); disc(x - 5, y, 4, body); disc(x + 5, y, 4, body); disc(x - 1, y - 3, 5, body); disc(x + 3, y - 2, 4, body);
+  px(x - 6, y - 4, 4, 1, hi); px(x - 2, y - 7, 4, 1, hi); // highlights
+  px(x - 4 + face, y - 2, 3, 2, '#ffd23f'); px(x + 2 + face, y - 2, 3, 2, '#ffd23f'); // glowing eyes
+  px(x - 5 + face, y - 4, 4, 1, '#22263c'); px(x + 2 + face, y - 4, 4, 1, '#22263c'); // grumpy brows
+  px(x - 2 + face, y + 2, 4, 1, '#22263c');
+  if (g.chase) { // zzzt: a little bolt underneath
+    const bx = x + ((frame >> 2) % 3) - 1;
+    if (frame % 8 < 5) { px(bx, y + 5, 2, 3, '#ffd23f'); px(bx - 2, y + 7, 3, 2, '#ffd23f'); px(bx, y + 9, 2, 3, '#fff6b0'); }
+  } else if ((frame >> 3) % 2) px(x - 6 + ((frame >> 4) % 3) * 5, y + 5, 1, 3, 'rgba(150,190,255,0.7)'); // a drip of rain
+}
+
+const DRAW_PERSON = { person: drawPerson, zombie: drawZombie, knight: drawKnight, brain: drawLittleBrain, monster: drawWaterMonster, cloud: drawCloudling };
 
 // Hydrothermal vent: a rocky chimney on the seabed. Off: lazy bubbles. Warn: glows orange and rumbles. On: a scalding column.
 function drawVent([, x, phase]) {
@@ -1781,6 +2088,7 @@ function drawBoss() {
   const shake = boss.state === 'roar' && frame % 4 < 2 ? 1 : 0;
   if (LEVEL.boss.type === 'brain') return drawBigBrain(shake);
   if (LEVEL.boss.type === 'genie') return drawGenie(shake);
+  if (LEVEL.boss.type === 'storm') return drawStormBoss(shake);
   const bx = Math.round(boss.x - camX) + shake, y = GROUND_Y, d = boss.dir;
   if (bx < -40 || bx > W + 40) return;
   if (boss.invul > 0 && (frame >> 2) % 2) return; // blinks while dazed
@@ -1939,6 +2247,65 @@ function drawGenie(shake) {
   }
 }
 
+// A lightning bolt flying along (vx, vy): a bright head with a jagged yellow trail behind it.
+function drawBolt(sx, sy, vx, vy) {
+  const l = Math.hypot(vx, vy) || 1, ux = vx / l, uy = vy / l;
+  for (let k = 1; k < 8; k++) {
+    const j = (((k * 5 + frame * 3) % 5) - 2) * (k < 4 ? 1 : 2);
+    px(sx - ux * k * 3 - uy * j, sy - uy * k * 3 + ux * j, 3, 3, k % 2 ? '#ffd23f' : '#fff6b0');
+  }
+  disc(sx, sy, 5, 'rgba(255,240,150,0.45)'); disc(sx, sy, 3, '#ffd23f'); disc(sx, sy, 2, '#ffffff');
+}
+
+// The Storm Cloud: a huge dark thundercloud with an angry face. His top (y 88) is what you ground pound; underneath it rains.
+// Charging: the cloud crackles and a dotted line from him to the spot he's aiming at gets brighter and then locks on.
+function drawStormBoss(shake) {
+  const bx = Math.round(boss.x - camX) + shake, cy = STORM.cy, d = boss.dir;
+  const charging = boss.state === 'windup', firing = boss.state === 'swing', hurt = boss.state === 'hurt';
+  if ((charging || (firing && boss.left > 0 && boss.nextShot <= 24)) && boss.state !== 'hurt') { // aiming line + target mark
+    const ax = boss.aimX - camX, ay = boss.aimY, len = Math.hypot(ax - bx, ay - cy), steps = Math.floor(len / 7);
+    for (let k = 2; k < steps; k++) px(bx + (ax - bx) * k / steps, cy + (ay - cy) * k / steps, 2, 2, boss.locked ? '#ffd23f' : 'rgba(255,210,63,0.5)');
+    px(ax - 5, ay, 11, 1, boss.locked ? '#ffd23f' : 'rgba(255,210,63,0.5)'); px(ax, ay - 5, 1, 11, boss.locked ? '#ffd23f' : 'rgba(255,210,63,0.5)');
+  }
+  for (const s of boss.shots) drawBolt(Math.round(s.x - camX), Math.round(s.y), s.vx, s.vy);
+  if (boss.invul > 0 && (frame >> 2) % 2) return; // blinks while dazed
+  const base = charging && frame % 6 < 3 ? '#6b7396' : '#555c7e', shade = '#3e4462', hi = '#7b84a8', shine = '#9aa3c4';
+  for (let k = 0; k < 9; k++) { // rain falling from underneath
+    const ry = STORM.bottom + 1 + ((frame * 3 + k * 11) % 16);
+    px(bx - 24 + k * 6 + (k % 2) * 2, ry, 1, 3, 'rgba(170,200,255,0.8)');
+  }
+  // the cloud: a dark underside, a lumpy body, and bumps on top (the highest is at y STORM.top)
+  for (const o of [-20, -7, 7, 20]) disc(bx + o, STORM.bottom - 8, 8, shade); // bottom puffs reach y STORM.bottom
+  ellipse(bx, cy + 2, 29, 15, shade); ellipse(bx, cy, 28, 14, base);
+  disc(bx - 21, cy + 1, 8, base); disc(bx + 21, cy + 1, 8, base);
+  disc(bx - 15, cy - 6, 10, base); disc(bx + 4, cy - 9, 11, base); disc(bx + 19, cy - 5, 9, base);
+  px(bx + 1, STORM.top, 7, 1, shine); px(bx - 18, cy - 15, 6, 1, hi); px(bx + 17, cy - 12, 5, 1, hi); px(bx - 28, cy - 2, 1, 5, hi); // shine
+  for (let k = 0; k < 6; k++) px(bx - 24 + k * 9, cy + 13 + (k % 2), 4, 1, 'rgba(30,34,60,0.6)'); // dark belly
+  // angry face: glowing yellow eyes and a jagged frown
+  const ex = d * 2, eye = charging || firing ? '#fff6b0' : '#ffd23f';
+  if (hurt) { for (const sx of [-13, 5]) for (let k = 0; k < 6; k++) { px(bx + sx + ex + k, cy - 3 + k, 2, 1, '#22263c'); px(bx + sx + ex + 5 - k, cy - 3 + k, 2, 1, '#22263c'); } } // dazed X eyes
+  else {
+    px(bx - 14 + ex, cy - 3, 9, 7, eye); px(bx + 5 + ex, cy - 3, 9, 7, eye);
+    px(bx - 11 + ex + d * 2, cy - 1, 3, 5, '#22263c'); px(bx + 8 + ex + d * 2, cy - 1, 3, 5, '#22263c');
+    for (let k = 0; k < 9; k++) { px(bx - 14 + ex + k, cy - 6 + Math.floor(k / 3), 1, 2, '#22263c'); px(bx + 5 + ex + k, cy - 4 - Math.floor(k / 3), 1, 2, '#22263c'); } // brows slanting down toward the middle
+  }
+  for (let k = 0; k < 10; k++) px(bx - 10 + ex + k * 2, cy + 8 + (k % 2) * 2, 2, 2, '#22263c'); // jagged mouth
+  if (charging || firing) for (let k = 0; k < 5; k++) { // electricity crackling over the cloud
+    const sx = bx - 24 + ((frame * 5 + k * 23) % 48), sy = cy - 12 + ((frame * 3 + k * 17) % 24);
+    px(sx, sy, 2, 2, '#fff6b0'); px(sx + 1, sy + 2, 2, 2, '#ffd23f');
+  }
+  if (charging) text('!', bx, STORM.top - 8, '#ff5a5a', 'center', 14);
+  if (hurt) for (let k = 0; k < 3; k++) { // dazed stars circling the top
+    const a = frame * 0.15 + k * 2.1;
+    px(bx + Math.cos(a) * 18, STORM.top - 10 + Math.sin(a) * 4, 3, 3, '#ffd23f');
+  }
+  if (boss.active && boss.invul <= 0 && ['walk', 'recover', 'swing'].includes(boss.state)) { // bouncing arrow: "ground pound here!"
+    const bob = Math.round(Math.sin(frame * 0.15) * 3);
+    for (let r = 0; r < 4; r++) px(bx - 3 + r, STORM.top - 28 + r + bob, 7 - 2 * r, 1, '#ffd23f');
+    px(bx - 1, STORM.top - 32 + bob, 3, 4, '#ffd23f');
+  }
+}
+
 function drawBossHud() {
   if (!boss || !boss.active || boss.dead) return;
   const cfg = LEVEL.boss;
@@ -1966,6 +2333,7 @@ function drawZombie(p) {
 }
 
 function drawGhost(g) {
+  if (LEVEL.theme === 'sky') return drawStormCloud(g);
   const face = g.face, x = Math.round(g.x - camX), y = Math.round(g.y);
   if (x < -20 || x > W + 20) return;
   disc(x, y, 9, g.chase ? 'rgba(190,225,255,0.3)' : 'rgba(170,215,255,0.16)'); // glow, brighter when it's after you
@@ -1985,6 +2353,7 @@ function drawGhost(g) {
 function drawDecal(d) {
   const x = Math.round(d.x - camX);
   if (x < -10 || x > W + 10) return;
+  if (LEVEL.kind === 'cloud') { px(x - 5, d.y - 1, 10, 1, '#ffffff'); px(x - 2, d.y - 2, 4, 1, '#bfe3ff'); px(x + 3, d.y - 2, 2, 1, '#ffe3f1'); return; }
   if (LEVEL.kind === 'knight') { px(x - 5, d.y - 1, 10, 1, '#9fb1cf'); px(x - 1, d.y - 2, 3, 1, '#c8d2e6'); px(x + 3, d.y - 2, 2, 1, '#e8303a'); return; }
   if (LEVEL.kind === 'monster') { px(x - 5, d.y - 1, 10, 1, '#1470b4'); px(x - 2, d.y - 2, 4, 1, '#2a8ad0'); px(x + 3, d.y - 2, 2, 1, '#1a78bd'); return; }
   if (LEVEL.kind === 'brain') { px(x - 5, d.y - 1, 10, 1, '#ff9ec4'); px(x - 2, d.y - 2, 4, 1, '#ffc2dc'); px(x + 3, d.y - 2, 2, 1, '#c9a2ff'); return; }
@@ -1995,7 +2364,7 @@ function drawDecal(d) {
 function drawBoulder() {
   const b = boulder;
   if (deadTimer > 0) return;
-  const cx = Math.round(b.x - camX), cy = Math.round(b.y), r = TUNE.radius;
+  const stunned = b.stun > 0, cx = Math.round(b.x - camX) + (stunned ? (frame % 2 ? 1 : -1) : 0), cy = Math.round(b.y), r = TUNE.radius; // shocked: shakes
   disc(cx, cy, r + 1, '#3a3a46');
   disc(cx, cy, r, '#9a9aa8');
   // rolling cracks/bumps
@@ -2013,6 +2382,13 @@ function drawBoulder() {
   if (isTalking('boulder')) px(cx - 1 + ex, cy + 3, 3, 3, '#111'); // mouth open while it's talking
   else px(cx - 2 + ex, cy + 3, 5, 1, '#111');
   if (b.vx * b.face > 1.5) px(cx - 1 + ex, cy + 4, 3, 1, '#111');
+  if (stunned) { // electric sparks around you and dizzy stars over your head
+    for (let k = 0; k < 6; k++) {
+      const a = frame * 0.35 + k * 1.05, rr = r + 2 + (k % 2) * 2;
+      px(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, 2, 2, k % 2 ? '#ffd23f' : '#fff6b0');
+    }
+    for (let k = 0; k < 3; k++) { const a = frame * 0.15 + k * 2.1; px(cx + Math.cos(a) * 9, cy - r - 6 + Math.sin(a) * 2, 3, 3, '#ffd23f'); }
+  }
 }
 
 function drawFlag(x, label) {
@@ -2034,7 +2410,7 @@ function draw() {
   ctx.save();
   const sh = shake > 0 ? Math.min(2, Math.ceil(shake / 4)) * (frame % 2 ? 1 : -1) : 0;
   ctx.translate(sh, topPad - Math.round(camY)); // the world layer: scrolls down when you go underground, shakes on a smash
-  px(0, -topPad - 100, W, topPad + 100, { day: '#8fd3ff', night: '#0b1030', castle: '#16121f', brain: '#2a0d2e', water: '#0a3a66' }[LEVEL.theme]); // sky above the world (portrait)
+  px(0, -topPad - 100, W, topPad + 100, { day: '#8fd3ff', night: '#0b1030', castle: '#16121f', brain: '#2a0d2e', water: '#0a3a66', sky: skyTop() }[LEVEL.theme]); // sky above the world (portrait)
   drawBackground();
   drawPits();
   drawCavity();
@@ -2142,4 +2518,4 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // Test hook for automated checks (harmless in the browser).
-window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get particles() { return particles; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, get boss() { return boss; }, get ending() { return ending; }, get hasKey() { return hasKey; }, get key() { return key; }, get baby() { return baby; }, get camY() { return camY; }, get solids() { return solids; }, get menuOpen() { return menuOpen; }, gateState, sweepY, laserHits, input, update };
+window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get particles() { return particles; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, get boss() { return boss; }, get ending() { return ending; }, get hasKey() { return hasKey; }, get key() { return key; }, get baby() { return baby; }, get camY() { return camY; }, get storm() { return storm; }, get solids() { return solids; }, get menuOpen() { return menuOpen; }, gateState, sweepY, laserHits, input, update };

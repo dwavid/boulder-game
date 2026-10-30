@@ -26,11 +26,14 @@
 - [x] Level 5: Watertopia (underwater: little water monsters, and hydrothermal vents that bubble, glow, then shoot a scalding column you wait out)
 - [x] Level 5 boss: the Water Genie (horns, chained wrists, shoots water bolts; ground pound his tail to hurt him)
 - [x] Level 5 ending: the Water Genie drops a key, smash the coral, unlock the coral floor and coral cage, free another baby rock (who only says "blublub bublub bub bubble lub blub"; real dialogue still to come)
+- [x] Level 6: Cloud World (cloud platforms, sky and rainbows, little clouds to squish, grumpy storm clouds that zap you instead of spikes)
+- [x] Level 6 boss: the Storm Cloud (the sky turns into a thunderstorm; he shoots aimed lightning bolts; touching his bottom or sides stuns you for 2 seconds; ground pound his top to hurt him)
+- [x] Level 6 ending: key, smash the lightning wall, unlock the cloud floor and electric cage, free another baby pebble (who can apparently talk)
 - [x] Level progression: beat a level to unlock the next; game over retries the same level
 - [x] Sound: cartoony squish, charge-up and zap/laser/whoosh sounds for lasers, synapses and vents, calm chiptune loop, boss loop, mute (M)
 
 ## Ideas backlog (add yours here!)
-- [ ] Level 5 and beyond (ideas: ice cave, lava, candy land, space) and a proper level select screen
+- [ ] Level 7 and beyond (ideas: ice cave, lava, candy land, space) and a proper level select screen
 - [ ] Boulder gets bigger (or faster) as it squishes people
 - [ ] More kinds of enemies: runners, archers who shoot back, people who throw things
 - [ ] More things to smash (crates, ice, cracked floors that hide secrets) and a proper story ending for the baby rock
