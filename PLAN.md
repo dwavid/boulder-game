@@ -12,6 +12,7 @@
 - [x] People who wander, panic when you get close, and get squished (+ decals, particles, sound)
 - [x] Spikes and pits cost a life, with checkpoints
 - [x] Lives, score, win/game-over screens
+- [x] Dimensional portals: replace the final flag in non-boss levels (touch it to warp); after a boss, boulder and the baby roll into a portal in the tunnel. "Zoop" + flash sound, white flash into the next level
 - [x] Keyboard and touch controls (phone friendly)
 - [x] Gamepad support (stick/D-pad to move, A/B to jump, X/Y to smash)
 - [x] Level 2: the Graveyard (night, zombies that shamble toward you, slow floating ghosts instead of spikes)

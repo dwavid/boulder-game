@@ -540,6 +540,9 @@ const sfx = {
   die: () => beep(400, 0.5, 'sawtooth', 0.06, -350),
   win: () => { beep(523, 0.15); setTimeout(() => beep(659, 0.15), 120); setTimeout(() => beep(784, 0.3), 240); },
   checkpoint: () => beep(700, 0.15, 'triangle', 0.06, 300),
+  // the portal: a rising "zooop" sweep while you're sucked in, then a bright flash-pop as you pop out the other side
+  zoop: () => { tone('sawtooth', 160, 1800, 0.07, 0.6, 0.12); tone('sine', 320, 3200, 0.1, 0.55, 0.1); },
+  flash: () => { noise('highpass', 3000, 8000, 0.8, 0.2, 0.12, 0); tone('sine', 1500, 400, 0.1, 0.25, 0.05); beep(2400, 0.08, 'triangle', 0.05, 0, 0.02); },
   bubble: () => { const r = rand(0.8, 1.4); tone('sine', 260 * r, 700 * r, 0.09, 0.09, 0.03); tone('sine', 520 * r, 1300 * r, 0.05, 0.03, 0.01, 0.03); }, // a little "blub"
   // Big Brain: a 1.25s charge-up (matches TUNE.brainWindup) that crackles faster and faster, with four tense ticks once
   // the warning columns lock on, then a thunder-crack strike.
@@ -732,7 +735,7 @@ const SQUISH_COLORS = {
 // ---------- Game state ----------
 let state = 'title'; // title | play | win | gameover
 let storm = 0; // 0 = sunny sky, 1 = thunderstorm (fades in while the Storm Cloud fight is on)
-let boulder, people, ghosts, boss, bossIntro = 0, solids, hasKey, key, ending, baby, camY = 0, shake = 0, lockedHint = 0, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame = 0, introTimer = 0;
+let portal, flash = 0, boulder, people, ghosts, boss, bossIntro = 0, solids, hasKey, key, ending, baby, camY = 0, shake = 0, lockedHint = 0, particles, decals, floaters, lives, squished, deadTimer, spawnX, camX, frame = 0, introTimer = 0;
 
 // People never walk onto spikes or through lasers: trim each walk range at the nearest one on their floor.
 function walkLimits(x, floorY, min, max) {
@@ -762,6 +765,7 @@ function resetRun() {
   decals = [];
   boss = LEVEL.boss ? { hp: LEVEL.boss.hp, dead: false } : null;
   solids = LEVEL.solids.map((sd) => sd.slice()); // a copy, because smashing and unlocking remove pieces
+  portal = LEVEL.goalX ? { x: LEVEL.goalX + 12, y: GROUND_Y - 26, warp: 0, open: 1 } : null; // non-boss levels end in a portal where the flag used to be
   hasKey = false; key = null; ending = null; camY = 0; shake = 0; lockedHint = 0; storm = 0;
   baby = LEVEL.underground ? { x: LEVEL.underground.babyX, y: LEVEL.underground.floorY - LEVEL.underground.babyR, vx: 0, vy: 0, rot: 0, free: false } : null;
   respawn();
@@ -986,7 +990,7 @@ function updateBoulder() {
   for (const cp of LEVEL.checkpoints) {
     if (b.x > cp && spawnX < cp) { spawnX = cp; sfx.checkpoint(); floaters.push({ x: cp, y: GROUND_Y - 30, text: 'CHECKPOINT', life: 60 }); }
   }
-  if (LEVEL.goalX && b.x > LEVEL.goalX) { state = 'win'; sfx.win(); }
+  if (portal && !portal.warp && portal.open >= 1 && portalTouches(b.x, b.y)) startWarp();
 }
 
 function updatePeople() {
@@ -1046,7 +1050,7 @@ function updateBoss() {
   if (boss.dead) {
     boss.timer--;
     boss.strikes = []; boss.shots = [];
-    if (!LEVEL.underground) { if (boss.timer <= 0) { state = 'win'; sfx.win(); } } // no secret ending: beating the boss wins
+    if (!LEVEL.underground) { if (boss.timer <= 0 && !portal) portal = { x: clamp(b.x + (b.x < cfg.camX + 220 ? 60 : -60), cfg.camX + 30, cfg.camX + 290), y: GROUND_Y - 26, warp: 0, open: 0 }; } // no secret ending: a portal opens and you hop in
     else if (boss.timer === 80) { // after the explosion, he drops a key
       key = { x: boss.x, y: GROUND_Y - TUNE.bossHeight, vy: -2.5, rest: false };
       floaters.push({ x: boss.x, y: GROUND_Y - 80, text: 'A KEY!', life: 70 });
@@ -1224,6 +1228,38 @@ function updateStormShots() {
   boss.shots = boss.shots.filter((s) => !s.dead && s.age < 200 && s.x > cfg.arenaLeft - 12 && s.x < cfg.arenaRight && s.y > -20);
 }
 
+// ----- The portal -----
+// Touch it (or, after a boss, roll into it) and boulder, plus the baby if it's free, spiral in with a "zoop", then a flash
+// carries you to the next level.
+function portalTouches(x, y) {
+  const rx = (portal.rx || 9) + TUNE.radius * 0.5, ry = (portal.ry || 24) + TUNE.radius * 0.5;
+  return ((x - portal.x) / rx) ** 2 + ((y - portal.y) / ry) ** 2 < 1;
+}
+
+function startWarp() {
+  portal.warp = 1;
+  const grab = (o) => ({ o, x0: o.x, y0: o.y });
+  portal.who = [grab(boulder)];
+  if (baby && baby.free) portal.who.push(grab(baby));
+  boulder.vx = boulder.vy = 0;
+  if (ending) ending.ctrl.right = false;
+  sfx.zoop();
+}
+
+function updateWarp() {
+  const p = portal, t = p.warp++, k = clamp(t / 45, 0, 1), e = k * k * (3 - 2 * k);
+  p.who.forEach((w, i) => {
+    w.o.x = w.x0 + (p.x - w.x0) * e; w.o.y = w.y0 + (p.y - w.y0) * e - Math.sin(k * Math.PI) * 10; // a little hop in
+    w.o.rot += 0.4;
+    if (frame % 2 === 0) spawnBurst(w.o.x, w.o.y, ['#7df9ff', '#c58bff', '#ffffff'], 1, 0.8);
+  });
+  if (t === 45) { flash = 1; sfx.flash(); spawnBurst(p.x, p.y, ['#7df9ff', '#c58bff', '#ffffff', '#ffd23f'], 30, 2.4); p.gone = true; }
+  if (t > 60) {
+    if (levelIndex === LEVELS.length - 1) { state = 'win'; sfx.win(); return; } // the end of the game: show the win screen
+    setLevel(levelIndex + 1); startGame(); // flash fades out over the new level
+  }
+}
+
 // ----- The key, and the ending -----
 function updateKey() {
   if (!key || key.taken) return;
@@ -1289,7 +1325,8 @@ function updateEnding() {
   } else if (e.step === 'rollOut') { // both roll off to the right through the tunnel
     c.right = true;
     if (e.t > 12) baby.vx = Math.min(TUNE.maxSpeed, baby.vx + 0.2);
-    if (b.x > LEVEL.width + 30 && baby.x > LEVEL.width + 30) { state = 'win'; sfx.win(); }
+    if (!portal) portal = { x: LEVEL.width - 40, y: u.floorY - 12, warp: 0, open: 0, rx: 7, ry: 11 }; // a portal opens in the tunnel
+    if (portal.open >= 1 && !portal.warp && portalTouches(b.x, b.y)) startWarp();
   }
 }
 
@@ -1323,12 +1360,16 @@ function update() {
         if (lives < 0) state = 'gameover'; else respawn();
       }
     } else {
-      updateBoulder();
+      if (portal && portal.warp) updateWarp(); else updateBoulder();
       updatePeople();
       updateBoss();
       updateKey();
       if (ending) updateEnding();
       updateBaby();
+      if (portal && !portal.warp && portal.open < 1) portal.open = Math.min(1, portal.open + 0.04);
+      if (portal && !portal.warp && !LEVEL.goalX && !ending && portal.open >= 1 && boss && boss.dead) { // no tunnel: roll toward the portal
+        boulder.vx += clamp(portal.x - boulder.x, -1, 1) * 0.3; if (portalTouches(boulder.x, boulder.y)) startWarp();
+      }
     }
     if (introTimer > 0) introTimer--;
   } else if (input.jumpPressed) {
@@ -1338,6 +1379,7 @@ function update() {
   }
   updateGhosts();
   updateFx();
+  flash = Math.max(0, flash - 0.03);
   // (On a narrow portrait screen the whole boss arena doesn't fit, so there the camera follows you inside the arena.)
   const arenaCam = clamp(boulder.x - W / 2, LEVEL.boss ? LEVEL.boss.camX : 0, (LEVEL.boss ? LEVEL.boss.camX : 0) + 320 - W);
   const target = boss && boss.active ? arenaCam : clamp(boulder.x - W * 0.34, 0, LEVEL.width - W);
@@ -2391,6 +2433,23 @@ function drawBoulder() {
   }
 }
 
+function drawPortal() {
+  if (!portal) return;
+  const rx = portal.rx || 9, ry = portal.ry || 24, o = portal.open, w = portal.warp;
+  const sx = Math.round(portal.x - camX), sy = Math.round(portal.y);
+  const grow = o * (w ? Math.max(0, 1 - Math.max(0, w - 45) / 10) : 1), prx = Math.round(rx * grow), pry = Math.round(ry * grow);
+  if (prx < 1 || sx < -30 || sx > W + 30) return;
+  for (let dy = -pry - 1; dy <= pry + 1; dy++) {
+    for (let dx = -prx - 1; dx <= prx + 1; dx++) {
+      const nx = dx / prx, ny = dy / pry, d = Math.hypot(nx, ny);
+      if (d > 1.12) continue;
+      if (d > 1) { px(sx + dx, sy + dy, 1, 1, frame % 6 < 3 ? '#c58bff' : '#7df9ff'); continue; } // glowing rim
+      const v = ((Math.atan2(ny, nx) / Math.PI + d * 2.5 - frame * 0.05) % 2 + 2) % 2;
+      px(sx + dx, sy + dy, 1, 1, d < 0.25 ? '#ffffff' : v < 1 ? (d > 0.8 ? '#7df9ff' : '#4a2a9e') : (d > 0.8 ? '#c58bff' : '#1a0b4a'));
+    }
+  }
+}
+
 function drawFlag(x, label) {
   const sx = Math.round(x - camX);
   px(sx, GROUND_Y - 30, 2, 30, '#ddd');
@@ -2417,7 +2476,6 @@ function draw() {
   solids.forEach(drawSolid);
   LEVEL.decor.forEach(drawDecor);
   LEVEL.checkpoints.forEach((cp) => drawFlag(cp, spawnX >= cp ? '#4fe36b' : '#999'));
-  if (LEVEL.goalX) drawFlag(LEVEL.goalX, '#ffd23f');
   if (LEVEL.underground && LEVEL.theme === 'castle') { // red carpet into the arena (not over the sand patch)
     px(LEVEL.boss.arenaLeft - 12 - camX, GROUND_Y - 1, 3228 - LEVEL.boss.arenaLeft + 12, 1, '#a3212e');
     px(3284 - camX, GROUND_Y - 1, 108, 1, '#a3212e');
@@ -2432,9 +2490,14 @@ function draw() {
     if (key && !key.taken) drawArrow(key.x, key.y - 26);
     else if (hasKey && solids.some((sd) => sd[4] === 'sand')) drawArrow(3256, 124);
   }
-  drawBaby();
-  drawCage();
-  drawBoulder();
+  drawPortal();
+  const warping = portal && portal.warp;
+  if (warping) { // shrink into the portal
+    const k = clamp(portal.warp / 45, 0, 1), s = 1 - k * 0.9, cx = portal.x - camX, cy = portal.y;
+    ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy);
+  }
+  if (!(warping && portal.gone)) { drawBaby(); drawCage(); drawBoulder(); } else drawCage();
+  if (warping) ctx.restore();
   if (ending && ending.key.show) drawKey(ending.key.x - camX, ending.key.y);
   ghosts.forEach(drawGhost);
   for (const q of particles) {
@@ -2445,6 +2508,7 @@ function draw() {
   }
   for (const f of floaters) text(f.text, f.x - camX, f.y, '#fff', 'center');
   ctx.restore();
+  if (flash > 0) px(0, 0, W, H, 'rgba(255,255,255,' + flash.toFixed(2) + ')');
 
   // HUD
   text('SQUISHED ' + squished + '/' + LEVEL.people.length, 6, 12);
@@ -2518,4 +2582,4 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // Test hook for automated checks (harmless in the browser).
-window.__game = { get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get particles() { return particles; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, get boss() { return boss; }, get ending() { return ending; }, get hasKey() { return hasKey; }, get key() { return key; }, get baby() { return baby; }, get camY() { return camY; }, get storm() { return storm; }, get solids() { return solids; }, get menuOpen() { return menuOpen; }, gateState, sweepY, laserHits, input, update };
+window.__game = { startEnding, get state() { return state; }, get boulder() { return boulder; }, get squished() { return squished; }, get particles() { return particles; }, get alive() { return deadTimer === 0; }, get lives() { return lives; }, get people() { return people; }, get ghosts() { return ghosts; }, get level() { return LEVEL; }, get levelIndex() { return levelIndex; }, setLevel, startGame, get boss() { return boss; }, get ending() { return ending; }, get hasKey() { return hasKey; }, get key() { return key; }, get baby() { return baby; }, get camY() { return camY; }, get storm() { return storm; }, get solids() { return solids; }, get menuOpen() { return menuOpen; }, gateState, sweepY, laserHits, input, update };
