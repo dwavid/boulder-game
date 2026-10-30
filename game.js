@@ -581,58 +581,65 @@ const sfx = {
 };
 
 // ----- Hazard sounds: lasers, synapses and vents charge up when they enter their warning, then fire -----
-// `v` is the volume, 0..1, from how far away the boulder is. The warning lasts TUNE.gateOnAt - TUNE.gateWarnAt = 30 frames
+// Each hazard plays through its own volume bus (`d`), and the bus follows the boulder's distance every frame, so a sound
+// that starts far away swells as you roll toward it (and never depends on where on screen it was when it began).
+// The warning lasts TUNE.gateOnAt - TUNE.gateWarnAt = 30 frames
 // (0.5s) and the deadly part 90 frames (1.5s), so the sounds are built to those lengths.
 const HAZARD_SFX = {
   gate: {
-    charge: (v) => { tone('sawtooth', 160, 1400, 0.5, 0.005, 0.055 * v); tone('square', 240, 2100, 0.5, 0.002, 0.025 * v); },
-    fire: (v) => {
-      tone('sawtooth', 1800, 180, 0.2, 0.09 * v, 0.02 * v);
-      tone('square', 110, 110, 1.4, 0.04 * v, 0.03 * v); tone('square', 113, 113, 1.4, 0.03 * v, 0.02 * v); // two close notes beat against each other: a buzzing hum
+    charge: (v, d) => { tone('sawtooth', 160, 1400, 0.5, 0.005, 0.055 * v, 0, d); tone('square', 240, 2100, 0.5, 0.002, 0.025 * v, 0, d); },
+    fire: (v, d) => {
+      tone('sawtooth', 1800, 180, 0.2, 0.09 * v, 0.02 * v, 0, d);
+      tone('square', 110, 110, 1.4, 0.04 * v, 0.03 * v, 0, d); tone('square', 113, 113, 1.4, 0.03 * v, 0.02 * v, 0, d); // two close notes beat against each other: a buzzing hum
     },
   },
   synapse: {
-    charge: (v) => {
-      tone('sawtooth', 300, 1800, 0.5, 0.005, 0.04 * v);
-      for (let i = 0; i < 12; i++) noise('highpass', rand(2500, 5000), 3000, 1, 0.03, 0.05 * v, 0, i * 0.04 + rand(0, 0.02)); // little crackles
+    charge: (v, d) => {
+      tone('sawtooth', 300, 1800, 0.5, 0.005, 0.04 * v, 0, d);
+      for (let i = 0; i < 12; i++) noise('highpass', rand(2500, 5000), 3000, 1, 0.03, 0.05 * v, 0, i * 0.04 + rand(0, 0.02), d); // little crackles
     },
-    fire: (v) => {
-      tone('sawtooth', 2200, 150, 0.15, 0.09 * v, 0.02 * v);
-      tone('sawtooth', 60, 60, 1.4, 0.05 * v, 0.03 * v);
-      for (let i = 0; i < 22; i++) noise('bandpass', rand(1500, 6000), rand(800, 3000), 3, rand(0.02, 0.06), 0.09 * v, 0, i * 0.065 + rand(0, 0.04)); // zzt-zzt-zzt
+    fire: (v, d) => {
+      tone('sawtooth', 2200, 150, 0.15, 0.09 * v, 0.02 * v, 0, d);
+      tone('sawtooth', 60, 60, 1.4, 0.05 * v, 0.03 * v, 0, d);
+      for (let i = 0; i < 22; i++) noise('bandpass', rand(1500, 6000), rand(800, 3000), 3, rand(0.02, 0.06), 0.09 * v, 0, i * 0.065 + rand(0, 0.04), d); // zzt-zzt-zzt
     },
   },
   vent: {
-    charge: (v) => {
-      tone('sine', 90, 260, 0.5, 0.01, 0.1 * v);
-      noise('bandpass', 200, 900, 1, 0.5, 0.01, 0.07 * v);
-      for (let i = 0; i < 6; i++) beep(rand(300, 700), 0.06, 'sine', 0.05 * v, 200, i * 0.08 + rand(0, 0.04)); // bubbles
+    charge: (v, d) => {
+      tone('sine', 90, 260, 0.5, 0.01, 0.1 * v, 0, d);
+      noise('bandpass', 200, 900, 1, 0.5, 0.01, 0.07 * v, 0, d);
+      for (let i = 0; i < 6; i++) beep(rand(300, 700), 0.06, 'sine', 0.05 * v, 200, i * 0.08 + rand(0, 0.04), d); // bubbles
     },
-    fire: (v) => { // WHOOOSH: noise sweeping up then back down
-      tone('sine', 80, 50, 0.25, 0.14 * v, 0);
-      noise('bandpass', 300, 1500, 0.8, 0.45, 0.01, 0.16 * v);
-      noise('bandpass', 1500, 400, 0.8, 1.05, 0.16 * v, 0, 0.45);
+    fire: (v, d) => { // WHOOOSH: noise sweeping up then back down
+      tone('sine', 80, 50, 0.25, 0.14 * v, 0, 0, d);
+      noise('bandpass', 300, 1500, 0.8, 0.45, 0.01, 0.16 * v, 0, d);
+      noise('bandpass', 1500, 400, 0.8, 1.05, 0.16 * v, 0, 0.45, d);
     },
   },
 };
-let hazPrev = [], hazLevel = null, sweepHum = null;
+const HAZARD_RANGE = 380; // px: farther than this a hazard is silent; roughly a screen away it's already clearly audible
+const hazVol = (x) => Math.pow(clamp(1 - Math.abs(x - boulder.x) / HAZARD_RANGE, 0, 1), 0.7);
+let hazPrev = [], hazLevel = null, sweepHum = null, hazBus = [];
 // Called every frame: starts the charge / fire sound when a hazard changes state, and keeps the sweeping beams humming.
 function updateHazardSound() {
-  if (hazLevel !== LEVEL) { hazLevel = LEVEL; hazPrev = []; }
+  if (hazLevel !== LEVEL) { hazLevel = LEVEL; hazPrev = []; hazBus.forEach((g) => g && g.disconnect()); hazBus = []; }
   const audible = actx && state === 'play';
   let hum = 0, humY = 0;
   LEVEL.lasers.forEach((l, i) => {
     const type = l[0];
     if (type === 'sweep') {
-      const v = clamp(1 - Math.abs(l[1] + l[2] / 2 - boulder.x) / 200, 0, 1);
+      const v = hazVol(l[1] + l[2] / 2);
       if (v > hum) { hum = v; humY = sweepY(l[3]); }
       return;
     }
     const st = gateState(type === 'synapse' ? l[3] : l[2]);
+    const x = type === 'synapse' ? l[1] + l[2] / 2 : l[1];
+    if (actx) {
+      if (!hazBus[i]) { hazBus[i] = actx.createGain(); hazBus[i].connect(master); }
+      hazBus[i].gain.setTargetAtTime(audible ? hazVol(x) : 0, actx.currentTime, 0.05);
+    }
     if (audible && hazPrev[i] !== undefined && st !== hazPrev[i] && st !== 'off') {
-      const x = type === 'synapse' ? l[1] + l[2] / 2 : l[1];
-      const v = clamp(1 - Math.abs(x - boulder.x) / 200, 0, 1);
-      if (v > 0.05) HAZARD_SFX[type][st === 'warn' ? 'charge' : 'fire'](v);
+      HAZARD_SFX[type][st === 'warn' ? 'charge' : 'fire'](1, hazBus[i]);
     }
     hazPrev[i] = st;
   });
